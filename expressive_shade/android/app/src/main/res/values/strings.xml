@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_service_description">ExpressiveShade accessibility service detects top edge pull-down gestures to display your Android 17 Material 3 Expressive notification shade.</string>
+</resources>
