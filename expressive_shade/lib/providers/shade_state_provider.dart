@@ -1004,6 +1004,11 @@ class ShadeStateProvider extends ChangeNotifier {
     SystemNotificationService.snoozeNotification(id, duration);
     notifyListeners();
   }
+
+  Future<void> openSettings() => SystemHardwareService.openSettings();
+
+  Future<void> openNotificationHistory() =>
+      SystemHardwareService.openNotificationHistory();
 }
 
 extension on String {

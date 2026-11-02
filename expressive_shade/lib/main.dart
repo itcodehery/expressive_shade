@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:provider/provider.dart';
+import 'core/di/injection.dart';
+import 'features/hardware/bloc/hardware_bloc.dart';
+import 'features/media/bloc/media_session_bloc.dart';
+import 'features/notifications/bloc/notification_bloc.dart';
+import 'features/shade_modes/bloc/shade_layout_bloc.dart';
+import 'features/theming/bloc/theme_and_font_bloc.dart';
 import 'providers/shade_state_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/shade_overlay_screen.dart';
 import 'theme/m3_expressive_theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await setupLocator();
   runApp(const ExpressiveShadeApp());
 }
 
@@ -15,43 +23,54 @@ class ExpressiveShadeApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ShadeStateProvider(),
-      child: Consumer<ShadeStateProvider>(
-        builder: (context, state, _) {
-          final isPlatformDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-          final isDark = state.themeMode == ThemeMode.system
-              ? isPlatformDark
-              : (state.themeMode == ThemeMode.dark);
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider<HardwareBloc>(create: (_) => sl<HardwareBloc>()),
+        BlocProvider<NotificationBloc>(create: (_) => sl<NotificationBloc>()),
+        BlocProvider<MediaSessionBloc>(create: (_) => sl<MediaSessionBloc>()),
+        BlocProvider<ThemeAndFontBloc>(create: (_) => sl<ThemeAndFontBloc>()),
+        BlocProvider<ShadeLayoutBloc>(create: (_) => sl<ShadeLayoutBloc>()),
+      ],
+      child: ChangeNotifierProvider(
+        create: (_) => ShadeStateProvider(),
+        child: Consumer<ShadeStateProvider>(
+          builder: (context, state, _) {
+            final isPlatformDark =
+                MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+            final isDark = state.themeMode == ThemeMode.system
+                ? isPlatformDark
+                : (state.themeMode == ThemeMode.dark);
 
-          final themeColors = ExpressiveThemeColors.fromSettings(
-            source: state.themeSource,
-            preset: state.selectedPreset,
-            custom: state.customTheme,
-            systemMonetColor: state.systemMonetColor,
-            isDark: isDark,
-          );
+            final themeColors = ExpressiveThemeColors.fromSettings(
+              source: state.themeSource,
+              preset: state.selectedPreset,
+              custom: state.customTheme,
+              systemMonetColor: state.systemMonetColor,
+              isDark: isDark,
+            );
 
-          return MaterialApp(
-            title: 'ExpressiveShade',
-            debugShowCheckedModeBanner: false,
-            theme: themeColors.toThemeData(state.selectedFont),
-            onGenerateRoute: (settings) {
-              final uri = Uri.parse(settings.name ?? '/');
-              if (uri.path == '/overlay') {
-                final target = uri.queryParameters['target'] ?? 'quick_settings';
+            return MaterialApp(
+              title: 'ExpressiveShade',
+              debugShowCheckedModeBanner: false,
+              theme: themeColors.toThemeData(state.selectedFont),
+              onGenerateRoute: (settings) {
+                final uri = Uri.parse(settings.name ?? '/');
+                if (uri.path == '/overlay') {
+                  final target =
+                      uri.queryParameters['target'] ?? 'quick_settings';
+                  return MaterialPageRoute(
+                    builder: (_) => ShadeOverlayScreen(initialTarget: target),
+                    settings: settings,
+                  );
+                }
                 return MaterialPageRoute(
-                  builder: (_) => ShadeOverlayScreen(initialTarget: target),
+                  builder: (_) => const HomeScreen(),
                   settings: settings,
                 );
-              }
-              return MaterialPageRoute(
-                builder: (_) => const HomeScreen(),
-                settings: settings,
-              );
-            },
-          );
-        },
+              },
+            );
+          },
+        ),
       ),
     );
   }
