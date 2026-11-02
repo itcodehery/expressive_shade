@@ -11,6 +11,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -36,6 +37,25 @@ class HardwareChannelHandler(
             "setVolume" -> setVolume(call, result)
             "toggleAutoRotate" -> toggleAutoRotate(result)
             "toggleDnd" -> toggleDnd(result)
+            "toggleBatterySaver" -> toggleBatterySaver(result)
+            "toggleAirplane" -> toggleAirplane(result)
+            "toggleHotspot" -> toggleHotspot(result)
+            "triggerCast", "openCastSettings" -> open(
+                result,
+                { Intent("android.settings.CAST_SETTINGS") },
+                { Intent("com.android.settings.action.MEDIA_OUTPUT") },
+                { Intent(Settings.ACTION_DISPLAY_SETTINGS) }
+            )
+            "toggleDataSaver", "openDataSaverSettings" -> open(
+                result,
+                { Intent(Settings.ACTION_DATA_SAVER_SETTINGS) },
+                { Intent(Settings.ACTION_WIRELESS_SETTINGS) }
+            )
+            "toggleExtraDim", "openExtraDimSettings" -> toggleExtraDim(result)
+            "openQrScanner" -> openQrScanner(result)
+            "openNfcSettings" -> open(result, { Intent(Settings.ACTION_NFC_SETTINGS) })
+            "openCalculator" -> openCalculator(result)
+            "openAlarm" -> open(result, { Intent(android.provider.AlarmClock.ACTION_SHOW_ALARMS) })
             "openAirplaneSettings" -> open(result, { Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS) })
             "openLocationSettings" -> open(result, { Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS) })
             "openBatterySaverSettings" -> open(result, { Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS) })
@@ -231,5 +251,83 @@ class HardwareChannelHandler(
         } catch (e: Exception) {
             result.error("ERROR", e.message, null)
         }
+    }
+
+    private fun toggleBatterySaver(result: MethodChannel.Result) {
+        try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+            val isCurrentlyOn = powerManager?.isPowerSaveMode == true
+            val target = if (isCurrentlyOn) 0 else 1
+            Settings.Global.putInt(context.contentResolver, "low_power", target)
+            onStateChanged()
+            result.success(target == 1)
+        } catch (_: Exception) {
+            open(result, { Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS) })
+        }
+    }
+
+    private fun toggleAirplane(result: MethodChannel.Result) {
+        try {
+            val current = Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0)
+            val newState = if (current == 1) 0 else 1
+            Settings.Global.putInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, newState)
+            val intent = Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).apply { putExtra("state", newState == 1) }
+            context.sendBroadcast(intent)
+            onStateChanged()
+            result.success(newState == 1)
+        } catch (_: Exception) {
+            open(result, { Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS) })
+        }
+    }
+
+    private fun toggleHotspot(result: MethodChannel.Result) {
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val method = wifiManager.javaClass.getDeclaredMethod("isWifiApEnabled")
+            val isEnabled = method.invoke(wifiManager) as? Boolean ?: false
+            val setMethod = wifiManager.javaClass.getDeclaredMethod("setWifiApEnabled", null, Boolean::class.javaPrimitiveType)
+            setMethod.invoke(wifiManager, null, !isEnabled)
+            onStateChanged()
+            result.success(!isEnabled)
+        } catch (_: Exception) {
+            open(
+                result,
+                { Intent("android.settings.TETHER_SETTINGS") },
+                { Intent(Settings.ACTION_WIRELESS_SETTINGS) }
+            )
+        }
+    }
+
+    private fun toggleExtraDim(result: MethodChannel.Result) {
+        try {
+            val current = Settings.Secure.getInt(context.contentResolver, "reduce_bright_colors_activated", 0)
+            val newState = if (current == 1) 0 else 1
+            Settings.Secure.putInt(context.contentResolver, "reduce_bright_colors_activated", newState)
+            onStateChanged()
+            result.success(newState == 1)
+        } catch (_: Exception) {
+            open(
+                result,
+                { Intent("android.settings.REDUCE_BRIGHT_COLORS_SETTINGS") },
+                { Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
+            )
+        }
+    }
+
+    private fun openQrScanner(result: MethodChannel.Result) {
+        open(
+            result,
+            { Intent("android.media.action.STILL_IMAGE_CAMERA").apply { putExtra("android.intent.extra.CAMERA_OPEN_ONLY", true) } },
+            { Intent("com.google.android.gms.vision.barcodedetection") },
+            { Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE) }
+        )
+    }
+
+    private fun openCalculator(result: MethodChannel.Result) {
+        open(
+            result,
+            { Intent().setAction(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_APP_CALCULATOR) },
+            { Intent(Settings.ACTION_SETTINGS) }
+        )
     }
 }

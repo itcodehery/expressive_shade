@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/font_config.dart';
@@ -115,71 +116,78 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: colors.surface,
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: colors.isDark ? 0.08 : 0.40),
-          width: 1.0,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: colors.isDark ? 0.16 : 0.06),
-            blurRadius: 10,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 1. Unified Group Header Row
-          _buildGroupHeader(
-            primaryNotif: primaryNotif,
-            summarySubtitle: summarySubtitle,
-            count: effectiveChildren.length,
-            colors: colors,
-            font: font,
-          ),
-
-          // 2. Child Notifications Area
-          AnimatedCrossFade(
-            duration: const Duration(milliseconds: 220),
-            firstCurve: Curves.easeOutCubic,
-            secondCurve: Curves.easeInCubic,
-            crossFadeState:
-                _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-            firstChild: Column(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.surface.withValues(alpha: colors.isDark ? 0.62 : 0.72),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: colors.isDark ? 0.10 : 0.40),
+                width: 1.0,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: colors.isDark ? 0.16 : 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (int i = 0; i < effectiveChildren.length; i++) ...[
-                  if (i > 0)
-                    Divider(
-                      height: 1,
-                      thickness: 0.8,
-                      color: colors.textSecondary.withValues(alpha: 0.12),
-                      indent: 14,
-                      endIndent: 14,
-                    ),
-                  _buildChildNotificationItem(
-                    notif: effectiveChildren[i],
+                // 1. Unified Group Header Row
+                _buildGroupHeader(
+                  primaryNotif: primaryNotif,
+                  summarySubtitle: summarySubtitle,
+                  count: effectiveChildren.length,
+                  colors: colors,
+                  font: font,
+                ),
+
+                // 2. Child Notifications Area
+                AnimatedCrossFade(
+                  duration: const Duration(milliseconds: 220),
+                  firstCurve: Curves.easeOutCubic,
+                  secondCurve: Curves.easeInCubic,
+                  crossFadeState:
+                      _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                  firstChild: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (int i = 0; i < effectiveChildren.length; i++) ...[
+                        if (i > 0)
+                          Divider(
+                            height: 1,
+                            thickness: 0.8,
+                            color: colors.textSecondary.withValues(alpha: 0.12),
+                            indent: 14,
+                            endIndent: 14,
+                          ),
+                        _buildChildNotificationItem(
+                          notif: effectiveChildren[i],
+                          colors: colors,
+                          font: font,
+                        ),
+                      ],
+                    ],
+                  ),
+                  secondChild: _buildCollapsedPreview(
+                    latestNotif: effectiveChildren.first,
+                    remainingCount: effectiveChildren.length - 1,
                     colors: colors,
                     font: font,
                   ),
-                ],
+                ),
               ],
             ),
-            secondChild: _buildCollapsedPreview(
-              latestNotif: effectiveChildren.first,
-              remainingCount: effectiveChildren.length - 1,
-              colors: colors,
-              font: font,
-            ),
           ),
-        ],
+        ),
       ),
     );
   }

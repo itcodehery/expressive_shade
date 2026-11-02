@@ -11,8 +11,10 @@ import android.location.LocationManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
+import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.telephony.TelephonyManager
@@ -29,7 +31,7 @@ object HardwareState {
         // 1. Wi-Fi
         var isWifiEnabled = false
         var isWifiConnected = false
-        var wifiSsid = "Wi-Fi"
+        var wifiSsid = ""
         try {
             val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             isWifiEnabled = wifiManager.isWifiEnabled
@@ -40,12 +42,38 @@ object HardwareState {
             isWifiConnected = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
 
             if (isWifiConnected) {
-                val info = wifiManager.connectionInfo
-                val rawSsid = info?.ssid?.replace("\"", "") ?: ""
-                wifiSsid = if (rawSsid.isNotEmpty() && rawSsid != "<unknown ssid>") rawSsid else "Connected"
-            } else {
-                wifiSsid = if (isWifiEnabled) "Not connected" else "Off"
+                val wifiInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    capabilities?.transportInfo as? WifiInfo ?: wifiManager.connectionInfo
+                } else {
+                    wifiManager.connectionInfo
+                }
+                val rawSsid = wifiInfo?.ssid?.replace("\"", "") ?: ""
+                wifiSsid = if (rawSsid.isNotEmpty() && rawSsid != "<unknown ssid>") rawSsid else ""
             }
+        } catch (_: Exception) {}
+
+        // 1b. Mobile Data
+        var isMobileDataEnabled = false
+        var isMobileDataConnected = false
+        try {
+            val telManager = appContext.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            isMobileDataEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                telManager.isDataEnabled
+            } else {
+                Settings.Global.getInt(appContext.contentResolver, "mobile_data", 0) == 1
+            }
+            val connManager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+            val network = connManager.activeNetwork
+            val capabilities = connManager.getNetworkCapabilities(network)
+            isMobileDataConnected = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true
+        } catch (_: Exception) {}
+
+        // 1c. Hotspot
+        var isHotspot = false
+        try {
+            val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val method = wifiManager.javaClass.getDeclaredMethod("isWifiApEnabled")
+            isHotspot = method.invoke(wifiManager) as? Boolean ?: false
         } catch (_: Exception) {}
 
         // 2. Bluetooth
@@ -156,6 +184,11 @@ object HardwareState {
                 "connected" to isWifiConnected,
                 "ssid" to wifiSsid
             ),
+            "mobileData" to mapOf(
+                "enabled" to isMobileDataEnabled,
+                "connected" to isMobileDataConnected
+            ),
+            "hotspot" to isHotspot,
             "bluetooth" to mapOf(
                 "enabled" to isBtEnabled,
                 "connected" to isBtConnected,

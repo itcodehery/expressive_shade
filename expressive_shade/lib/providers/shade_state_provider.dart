@@ -392,16 +392,47 @@ class ShadeStateProvider extends ChangeNotifier {
       final wifi = hw['wifi'] as Map;
       final enabled = wifi['enabled'] == true;
       final connected = wifi['connected'] == true;
-      final ssid = (wifi['ssid'] ?? (enabled ? 'Wi-Fi' : 'Off')).toString();
+      final rawSsid = wifi['ssid']?.toString() ?? '';
+      final validSsid = (rawSsid.isNotEmpty &&
+              rawSsid != 'Connected' &&
+              rawSsid != '<unknown ssid>' &&
+              rawSsid != 'Wi-Fi')
+          ? rawSsid
+          : null;
+
       _updateTile(
         'wifi',
         (t) => t.copyWith(
           isActive: enabled,
-          title: connected ? ssid : 'Internet',
+          title: _networkTileStyle == NetworkTileStyle.separate ? 'Wi-Fi' : 'Internet',
           subtitle: connected
-              ? 'Connected'
+              ? (validSsid ?? 'Connected')
               : (enabled ? 'Not connected' : 'Off'),
         ),
+      );
+    }
+
+    // 1b. Mobile Data
+    if (hw['mobileData'] is Map) {
+      final md = hw['mobileData'] as Map;
+      final enabled = md['enabled'] == true;
+      final connected = md['connected'] == true;
+      final carrier = _carrierName.isNotEmpty ? _carrierName : 'Mobile Data';
+      _updateTile(
+        'mobile_data',
+        (t) => t.copyWith(
+          isActive: enabled,
+          subtitle: enabled ? (connected ? carrier : 'Active') : 'Off',
+        ),
+      );
+    }
+
+    // 1c. Hotspot
+    if (hw['hotspot'] is bool) {
+      final on = hw['hotspot'] as bool;
+      _updateTile(
+        'hotspot',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'Sharing' : 'Off'),
       );
     }
 
@@ -756,13 +787,18 @@ class ShadeStateProvider extends ChangeNotifier {
         );
         SystemHardwareService.setFlashlight(newActive);
       } else if (id == 'wifi') {
-        if (_networkTileStyle == NetworkTileStyle.separate) {
-          _tiles[index] = tile.copyWith(
-            isActive: newActive,
-            subtitle: newActive ? 'Connected' : 'Off',
-          );
-        }
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          title: _networkTileStyle == NetworkTileStyle.separate ? 'Wi-Fi' : 'Internet',
+          subtitle: newActive ? 'Connected' : 'Off',
+        );
         SystemHardwareService.toggleWifi();
+      } else if (id == 'mobile_data') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? (_carrierName.isNotEmpty ? _carrierName : 'Active') : 'Off',
+        );
+        SystemHardwareService.openMobileDataSettings();
       } else if (id == 'bluetooth') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
@@ -781,6 +817,73 @@ class ShadeStateProvider extends ChangeNotifier {
           subtitle: newActive ? 'On' : 'Off',
         );
         SystemHardwareService.toggleDnd();
+      } else if (id == 'battery_saver') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Active' : 'Off',
+        );
+        SystemHardwareService.toggleBatterySaver();
+      } else if (id == 'airplane') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
+        SystemHardwareService.toggleAirplane();
+      } else if (id == 'hotspot') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Sharing' : 'Off',
+        );
+        SystemHardwareService.toggleHotspot();
+      } else if (id == 'cast') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Streaming' : 'Off',
+        );
+        SystemHardwareService.triggerCast();
+      } else if (id == 'data_saver') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
+        SystemHardwareService.toggleDataSaver();
+      } else if (id == 'extra_dim') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Dimmed' : 'Off',
+        );
+        SystemHardwareService.toggleExtraDim();
+      } else if (id == 'qr_scanner') {
+        SystemHardwareService.openQrScanner();
+      } else if (id == 'location') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Precise' : 'Off',
+        );
+        SystemHardwareService.openLocationSettings();
+      } else if (id == 'night_light') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Warm' : 'Off',
+        );
+        SystemHardwareService.openNightLightSettings();
+      } else if (id == 'nfc') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
+        SystemHardwareService.openNfcSettings();
+      } else if (id == 'calculator') {
+        SystemHardwareService.openCalculator();
+      } else if (id == 'alarm' || id == 'timer' || id == 'stopwatch') {
+        SystemHardwareService.openAlarm();
+      } else if (id == 'dark_theme') {
+        final newMode = themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+        setThemeMode(newMode);
+        _tiles[index] = tile.copyWith(
+          isActive: newMode == ThemeMode.dark,
+          subtitle: newMode == ThemeMode.dark ? 'Dark' : 'Light',
+        );
       } else {
         // Direct in-place toggle for all other settings (battery saver, night light, hotspot, etc.)
         // AVOID opening external settings app!

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../models/font_config.dart';
@@ -368,17 +369,25 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
             _settingsNotifId = (_settingsNotifId == notif.id) ? null : notif.id;
           });
         },
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-          decoration: BoxDecoration(
-            color: widget.colors.surface.withValues(alpha: 0.72),
-            borderRadius: borderRadius,
-            border: Border.all(
-              color: widget.colors.inactivePill.withValues(alpha: 0.25),
-              width: 0.8,
-            ),
-          ),
-          child: Row(
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+              decoration: BoxDecoration(
+                color: widget.colors.surface.withValues(
+                  alpha: widget.colors.isDark ? 0.62 : 0.72,
+                ),
+                borderRadius: borderRadius,
+                border: Border.all(
+                  color: Colors.white.withValues(
+                    alpha: widget.colors.isDark ? 0.10 : 0.35,
+                  ),
+                  width: 0.8,
+                ),
+              ),
+              child: Row(
             children: [
               Container(
                 width: 26,
@@ -448,8 +457,10 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
           ),
         ),
       ),
-    );
-  }
+    ),
+    ),
+  );
+}
 
   bool _isImportant(NotificationModel notif) {
     final combined = '${notif.appName} ${notif.title} ${notif.content}'.toLowerCase();

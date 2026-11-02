@@ -153,23 +153,42 @@ class HardwareBloc extends Bloc<HardwareEvent, HardwareState> {
         subtitle: newActive ? 'On' : 'Off',
       );
       SystemHardwareService.toggleDnd();
+    } else if (tile.id == 'battery_saver') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Active' : 'Off');
+      SystemHardwareService.toggleBatterySaver();
+    } else if (tile.id == 'airplane') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+      SystemHardwareService.toggleAirplane();
+    } else if (tile.id == 'hotspot') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Sharing' : 'Off');
+      SystemHardwareService.toggleHotspot();
+    } else if (tile.id == 'cast') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Streaming' : 'Off');
+      SystemHardwareService.triggerCast();
+    } else if (tile.id == 'data_saver') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+      SystemHardwareService.toggleDataSaver();
+    } else if (tile.id == 'extra_dim') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Dimmed' : 'Off');
+      SystemHardwareService.toggleExtraDim();
+    } else if (tile.id == 'qr_scanner') {
+      SystemHardwareService.openQrScanner();
+    } else if (tile.id == 'location') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Precise' : 'Off');
+      SystemHardwareService.openLocationSettings();
+    } else if (tile.id == 'night_light') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Warm' : 'Off');
+      SystemHardwareService.openNightLightSettings();
+    } else if (tile.id == 'nfc') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+      SystemHardwareService.openNfcSettings();
+    } else if (tile.id == 'calculator') {
+      SystemHardwareService.openCalculator();
+    } else if (tile.id == 'alarm' || tile.id == 'timer' || tile.id == 'stopwatch') {
+      SystemHardwareService.openAlarm();
     } else {
       String? newSubtitle = newActive ? 'On' : 'Off';
-      if (tile.id == 'battery_saver') {
-        newSubtitle = newActive ? 'Active' : 'Off';
-      } else if (tile.id == 'night_light') {
-        newSubtitle = newActive ? 'Warm' : 'Off';
-      } else if (tile.id == 'hotspot') {
-        newSubtitle = newActive ? 'Sharing' : 'Off';
-      } else if (tile.id == 'airplane') {
-        newSubtitle = newActive ? 'On' : 'Off';
-      } else if (tile.id == 'location') {
-        newSubtitle = newActive ? 'Precise' : 'Off';
-      } else if (tile.id == 'dark_theme') {
-        newSubtitle = newActive ? 'Dark' : 'Light';
-      } else if (tile.id == 'data_saver') {
-        newSubtitle = newActive ? 'On' : 'Off';
-      } else if (tile.id == 'vpn') {
+      if (tile.id == 'vpn') {
         newSubtitle = newActive ? 'Connected' : 'Disconnected';
       } else if (tile.id == 'modes') {
         newSubtitle = newActive ? 'Focus' : 'Normal';

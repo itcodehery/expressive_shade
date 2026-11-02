@@ -89,6 +89,72 @@ class SystemHardwareService {
     }
   }
 
+  static Future<bool?> toggleBatterySaver() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleBatterySaver');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool?> toggleAirplane() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleAirplane');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool?> toggleHotspot() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleHotspot');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> triggerCast() async {
+    try {
+      await _channel.invokeMethod('triggerCast');
+    } catch (_) {}
+  }
+
+  static Future<void> toggleDataSaver() async {
+    try {
+      await _channel.invokeMethod('toggleDataSaver');
+    } catch (_) {}
+  }
+
+  static Future<void> toggleExtraDim() async {
+    try {
+      await _channel.invokeMethod('toggleExtraDim');
+    } catch (_) {}
+  }
+
+  static Future<void> openQrScanner() async {
+    try {
+      await _channel.invokeMethod('openQrScanner');
+    } catch (_) {}
+  }
+
+  static Future<void> openNfcSettings() async {
+    try {
+      await _channel.invokeMethod('openNfcSettings');
+    } catch (_) {}
+  }
+
+  static Future<void> openCalculator() async {
+    try {
+      await _channel.invokeMethod('openCalculator');
+    } catch (_) {}
+  }
+
+  static Future<void> openAlarm() async {
+    try {
+      await _channel.invokeMethod('openAlarm');
+    } catch (_) {}
+  }
+
   static Future<void> openAirplaneSettings() async {
     try {
       await _channel.invokeMethod('openAirplaneSettings');

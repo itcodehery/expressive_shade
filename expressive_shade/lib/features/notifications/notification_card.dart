@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/font_config.dart';
@@ -100,24 +101,32 @@ class _NotificationCardState extends State<NotificationCard> {
           HapticFeedback.heavyImpact();
           setState(() => _isShowingSettings = true);
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: colors.surface,
-            borderRadius: borderRadius,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: colors.isDark ? 0.12 : 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+        child: ClipRRect(
+          borderRadius: borderRadius,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: colors.surface.withValues(alpha: colors.isDark ? 0.62 : 0.72),
+                borderRadius: borderRadius,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: colors.isDark ? 0.10 : 0.35),
+                  width: 1.0,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: colors.isDark ? 0.14 : 0.06),
+                    blurRadius: 10,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
               // Header Row: App Icon / Avatar, App Name, Time, Group Badge & Chevron
               Row(
                 children: [
@@ -331,6 +340,8 @@ class _NotificationCardState extends State<NotificationCard> {
           ),
         ),
       ),
+    ),
+    ),
     );
   }
 
