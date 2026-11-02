@@ -86,18 +86,23 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        // 1. Top Header Chips
-        MatrixHeader(
-          batteryLevel: widget.batteryLevel,
-          isCharging: widget.isCharging,
-          colors: widget.colors,
-          font: widget.font,
-          onEditTap: widget.onEditTap,
-        ),
-        const SizedBox(height: 12),
+        // 1 & 2. Top Opaque Area: Header Chips, Sliders & Quick Tiles
+        Container(
+          color: widget.colors.background,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MatrixHeader(
+                batteryLevel: widget.batteryLevel,
+                isCharging: widget.isCharging,
+                colors: widget.colors,
+                font: widget.font,
+                onEditTap: widget.onEditTap,
+              ),
+              const SizedBox(height: 12),
 
-        // 2. Quick Settings Section
-        Column(
+              // 2. Quick Settings Section
+              Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Brightness Slider (animates above tiles on expand)
@@ -196,12 +201,27 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
                 ),
               ),
             ),
+              ],
+            ),
           ],
         ),
-        const SizedBox(height: 16),
+      ),
+      const SizedBox(height: 16),
 
-        // 3. Categorized Notifications
-        _buildNotificationsSection(),
+        // 3. Categorized Notifications (Semi-Transparent & Blurry Container)
+        ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              color: widget.colors.surface.withValues(
+                alpha: widget.colors.isDark ? 0.35 : 0.50,
+              ),
+              padding: const EdgeInsets.all(12),
+              child: _buildNotificationsSection(),
+            ),
+          ),
+        ),
         const SizedBox(height: 24),
       ],
     );

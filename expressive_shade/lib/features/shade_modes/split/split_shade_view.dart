@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../models/font_config.dart';
@@ -94,27 +95,40 @@ class SplitShadeView extends StatelessWidget {
             controller: pageController,
             onPageChanged: onPageChanged,
             children: [
-              // Page 0: Dedicated Notifications Sheet
-              ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                children: [
-                  NotificationList(
-                    notifications: notifications,
-                    colors: colors,
-                    font: font,
-                    onDismiss: onDismissNotification,
-                    onActionTap: onActionTap,
-                    onReply: onReply,
-                    onTap: onOpenNotification,
-                    onSnooze: onSnoozeNotification,
+              // Page 0: Dedicated Notifications Sheet (Semi-transparent & Blurry)
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                  child: Container(
+                    color: colors.surface.withValues(
+                      alpha: colors.isDark ? 0.35 : 0.50,
+                    ),
+                    child: ListView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
+                      children: [
+                        NotificationList(
+                          notifications: notifications,
+                          colors: colors,
+                          font: font,
+                          onDismiss: onDismissNotification,
+                          onActionTap: onActionTap,
+                          onReply: onReply,
+                          onTap: onOpenNotification,
+                          onSnooze: onSnoozeNotification,
+                        ),
+                      ],
+                    ),
                   ),
-                ],
+                ),
               ),
 
-              // Page 1: Control Center Panel
-              ListView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                children: [
+              // Page 1: Control Center Panel (Completely Opaque Tiles)
+              Container(
+                color: colors.background,
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  children: [
                   // Brightness Slider
                   ExpressiveSlider(
                     value: brightness,
@@ -164,7 +178,8 @@ class SplitShadeView extends StatelessWidget {
                   const SizedBox(height: 24),
                 ],
               ),
-            ],
+            ),
+          ],
           ),
         ),
       ],

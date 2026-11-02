@@ -170,34 +170,40 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
         child: Column(
           children: [
             if (showStandardHeader) ...[
-              // Status Bar & System Header
-              _buildStatusBar(state, colors),
-
-              // Secondary Quick Actions Header or Edit Header
-              if (_isEditMode) ...[
-                _buildEditHeaderControls(state, colors),
-                const SizedBox(height: 6),
-              ] else if (state.shadeMode == ShadeMode.unified) ...[
-                ClipRect(
-                  child: SizeTransition(
-                    sizeFactor: _bouncyCurveAnimation,
-                    alignment: Alignment.topCenter,
-                    child: FadeTransition(
-                      opacity: _bouncyCurveAnimation,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _buildHeaderControls(state, colors),
-                          const SizedBox(height: 6),
-                        ],
+              // Status Bar & System Header (Completely Opaque Top Section)
+              Container(
+                color: colors.background,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildStatusBar(state, colors),
+                    if (_isEditMode) ...[
+                      _buildEditHeaderControls(state, colors),
+                      const SizedBox(height: 6),
+                    ] else if (state.shadeMode == ShadeMode.unified) ...[
+                      ClipRect(
+                        child: SizeTransition(
+                          sizeFactor: _bouncyCurveAnimation,
+                          alignment: Alignment.topCenter,
+                          child: FadeTransition(
+                            opacity: _bouncyCurveAnimation,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildHeaderControls(state, colors),
+                                const SizedBox(height: 6),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+                    ] else ...[
+                      _buildHeaderControls(state, colors),
+                      const SizedBox(height: 6),
+                    ],
+                  ],
                 ),
-              ] else ...[
-                _buildHeaderControls(state, colors),
-                const SizedBox(height: 6),
-              ],
+              ),
             ],
 
             // Main View

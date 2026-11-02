@@ -103,7 +103,8 @@ class UnifiedShadeView extends StatelessWidget {
       ),
       padding: const EdgeInsets.only(top: 8, bottom: 0),
       children: [
-        Padding(
+        Container(
+          color: colors.background,
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
