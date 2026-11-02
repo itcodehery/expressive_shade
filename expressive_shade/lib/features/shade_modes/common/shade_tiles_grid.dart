@@ -51,7 +51,7 @@ class PaginatedTilesContainer extends StatefulWidget {
     required this.colors,
     required this.pages,
     required this.builder,
-    this.fixedHeight = (5 * 68.0) + (4 * 12.0),
+    this.fixedHeight = (5 * 68.0) + (4 * 12.0) + 2.0,
   });
 
   @override

@@ -92,7 +92,7 @@ class StandardEditTilesView extends StatelessWidget {
       pages.add(rows.sublist(i, end));
     }
 
-    const double fixedHeight = (5 * 68.0) + (4 * 12.0);
+    const double fixedHeight = (5 * 68.0) + (4 * 12.0) + 2.0;
 
     return PaginatedTilesContainer(
       colors: colors,
@@ -166,12 +166,12 @@ class StandardEditTilesView extends StatelessWidget {
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(tile.isWide ? 34 : 24),
-            border: isHovered
-                ? Border.all(color: colors.activePill, width: 2.0)
-                : Border.all(color: Colors.transparent, width: 2.0),
-          ),
+          foregroundDecoration: isHovered
+              ? BoxDecoration(
+                  borderRadius: BorderRadius.circular(tile.isWide ? 34 : 24),
+                  border: Border.all(color: colors.activePill, width: 2.0),
+                )
+              : null,
           child: LongPressDraggable<String>(
             data: tile.id,
             delay: const Duration(milliseconds: 180),

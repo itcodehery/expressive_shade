@@ -86,7 +86,8 @@ class _UnifiedPaginatedTilesContainerState
     maxRows = maxRows.clamp(2, 5);
 
     const double collapsedHeight = (2 * 68.0) + (1 * 12.0); // 148.0
-    final double expandedHeight = (maxRows * 68.0) + ((maxRows - 1) * 12.0);
+    final double expandedHeight =
+        (maxRows * 68.0) + ((maxRows - 1) * 12.0) + 2.0;
 
     return Column(
       mainAxisSize: MainAxisSize.min,

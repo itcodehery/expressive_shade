@@ -184,7 +184,7 @@ class SplitShadeView extends StatelessWidget {
       pages.add(rows.sublist(i, end));
     }
 
-    const double fixedHeight = (5 * 68.0) + (4 * 12.0);
+    const double fixedHeight = (5 * 68.0) + (4 * 12.0) + 2.0;
 
     return PaginatedTilesContainer(
       colors: colors,
