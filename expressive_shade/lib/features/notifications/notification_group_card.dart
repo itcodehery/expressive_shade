@@ -122,7 +122,7 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
           filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
           child: Container(
             decoration: BoxDecoration(
-              color: colors.surface.withValues(alpha: colors.isDark ? 0.62 : 0.72),
+              color: colors.surface.withValues(alpha: colors.isDark ? 0.40 : 0.52),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: Colors.white.withValues(alpha: colors.isDark ? 0.10 : 0.40),

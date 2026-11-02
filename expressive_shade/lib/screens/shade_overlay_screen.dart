@@ -172,7 +172,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
               child: GestureDetector(
                 onTap: _dismissOverlay,
                 child: Container(
-                  color: Colors.black.withValues(alpha: 0.50),
+                  color: Colors.black.withValues(alpha: 0.25),
                 ),
               ),
             ),
@@ -183,7 +183,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                 child: Container(
                   width: double.infinity,
                   height: double.infinity,
-                  color: themeColors.background,
+                  color: Colors.transparent,
                   child: Stack(
                     children: [
                       // Full-Height Interactive Shade Canvas extending edge-to-edge seamlessly

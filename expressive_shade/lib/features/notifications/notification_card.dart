@@ -109,7 +109,7 @@ class _NotificationCardState extends State<NotificationCard> {
               duration: const Duration(milliseconds: 120),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: colors.surface.withValues(alpha: colors.isDark ? 0.62 : 0.72),
+                color: colors.surface.withValues(alpha: colors.isDark ? 0.40 : 0.52),
                 borderRadius: borderRadius,
                 border: Border.all(
                   color: Colors.white.withValues(alpha: colors.isDark ? 0.10 : 0.35),

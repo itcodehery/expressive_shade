@@ -309,10 +309,10 @@ class UnifiedShadeView extends StatelessWidget {
   }
 
   Widget _buildNotificationsContainer(BuildContext context) {
-    final blurSigma = customTheme.blurIntensity.clamp(4.0, 18.0);
-    final cardOpacity = customTheme.cardOpacity.clamp(0.1, 1.0);
-    final containerAlpha = (cardOpacity * 0.38).clamp(0.15, 0.55);
-    final containerBg = colors.surface.withValues(alpha: containerAlpha);
+    final blurSigma = customTheme.blurIntensity.clamp(10.0, 30.0);
+    final containerBg = colors.surface.withValues(
+      alpha: colors.isDark ? 0.35 : 0.50,
+    );
     final screenHeight = MediaQuery.sizeOf(context).height;
 
     return ClipRRect(
@@ -331,6 +331,12 @@ class UnifiedShadeView extends StatelessWidget {
           decoration: BoxDecoration(
             color: containerBg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: colors.isDark ? 0.15 : 0.40),
+                width: 1.0,
+              ),
+            ),
           ),
           padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
           child: NotificationList(

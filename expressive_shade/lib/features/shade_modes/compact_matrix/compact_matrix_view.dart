@@ -377,7 +377,7 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
               padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
               decoration: BoxDecoration(
                 color: widget.colors.surface.withValues(
-                  alpha: widget.colors.isDark ? 0.62 : 0.72,
+                  alpha: widget.colors.isDark ? 0.40 : 0.52,
                 ),
                 borderRadius: borderRadius,
                 border: Border.all(

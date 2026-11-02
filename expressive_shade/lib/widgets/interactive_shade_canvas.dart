@@ -163,9 +163,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     final showStandardHeader = state.shadeMode != ShadeMode.smart;
 
     final mainContent = Container(
-      color: state.shadeMode == ShadeMode.smart && !_isEditMode
-          ? Colors.transparent
-          : colors.background,
+      color: Colors.transparent,
       child: SafeArea(
         top: false,
         bottom: true,
