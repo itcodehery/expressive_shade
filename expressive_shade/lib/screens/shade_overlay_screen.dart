@@ -24,10 +24,18 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   @override
   void initState() {
     super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ));
+
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
-      reverseDuration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 280),
+      reverseDuration: const Duration(milliseconds: 220),
     );
 
     _slideAnimation = Tween<Offset>(
@@ -46,20 +54,27 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     );
 
     _overlayChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onPanelTargetChanged') {
+      if (call.method == 'onPanelTargetChanged' || call.method == 'reloadSettings') {
         final target = call.arguments?.toString();
-        if (target != null && mounted) {
+        if (mounted) {
           final state = context.read<ShadeStateProvider>();
-          state.setSplitTabIndex(target == 'notifications' ? 0 : 1);
+          await state.loadSavedSettings();
+          if (target != null && target.isNotEmpty) {
+            state.setSplitTabIndex(target == 'notifications' ? 0 : 1);
+          }
+          state.setUnifiedQsExpanded(false);
+          _animController.forward(from: 0.0);
         }
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
         final state = context.read<ShadeStateProvider>();
+        await state.loadSavedSettings();
         state.setSplitTabIndex(widget.initialTarget == 'notifications' ? 0 : 1);
-        _animController.forward();
+        state.setUnifiedQsExpanded(false);
+        _animController.forward(from: 0.0);
       }
     });
   }
@@ -71,12 +86,25 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   }
 
   void _dismissOverlay() {
+    if (_animController.isAnimating) return;
     _animController.reverse().then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
         SystemNavigator.pop();
       }
+    });
+  }
+
+  void _dismissOverlayAndExecute(VoidCallback action) {
+    if (_animController.isAnimating) return;
+    _animController.reverse().then((_) {
+      try {
+        _overlayChannel.invokeMethod('dismissOverlay');
+      } catch (_) {
+        SystemNavigator.pop();
+      }
+      action();
     });
   }
 
@@ -103,10 +131,23 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       child: Scaffold(
         backgroundColor: Colors.transparent,
         body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragUpdate: (details) {
+            // Drag the notification shade slowly 1:1 with finger
+            final screenHeight = MediaQuery.of(context).size.height;
+            final delta = details.delta.dy / screenHeight;
+            _animController.value = (_animController.value + delta).clamp(0.0, 1.0);
+          },
           onVerticalDragEnd: (details) {
-            if (details.primaryVelocity != null && details.primaryVelocity! < -300) {
-              // Fling upwards closes the shade
-              _dismissOverlay();
+            final velocity = details.primaryVelocity ?? 0;
+            if (velocity < -250 || _animController.value < 0.65) {
+              // Fling up or released near top closes the shade
+              _animController.animateTo(0.0, curve: Curves.easeInCubic, duration: const Duration(milliseconds: 220)).then((_) {
+                _dismissOverlay();
+              });
+            } else {
+              // Snaps fully open
+              _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 200));
             }
           },
           child: Stack(
@@ -143,11 +184,29 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                   child: Column(
                     children: [
                       Expanded(
-                        child: InteractiveShadeCanvas(colors: themeColors),
+                        child: InteractiveShadeCanvas(
+                          colors: themeColors,
+                          onDismissAndExecute: _dismissOverlayAndExecute,
+                        ),
                       ),
-                      // Bottom Grab Handle to pull up
+                      // Bottom Grab Handle to drag or pull up
                       GestureDetector(
                         onTap: _dismissOverlay,
+                        onVerticalDragUpdate: (details) {
+                          final screenHeight = MediaQuery.of(context).size.height;
+                          final delta = details.delta.dy / screenHeight;
+                          _animController.value = (_animController.value + delta).clamp(0.0, 1.0);
+                        },
+                        onVerticalDragEnd: (details) {
+                          final velocity = details.primaryVelocity ?? 0;
+                          if (velocity < -200 || _animController.value < 0.65) {
+                            _animController.animateTo(0.0, curve: Curves.easeInCubic, duration: const Duration(milliseconds: 220)).then((_) {
+                              _dismissOverlay();
+                            });
+                          } else {
+                            _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 200));
+                          }
+                        },
                         child: Container(
                           width: double.infinity,
                           padding: const EdgeInsets.symmetric(vertical: 10),

@@ -60,6 +60,9 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                     gravity = Gravity.TOP or Gravity.START
                     x = 0
                     y = 0
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
                 }
 
                 var startX = 0f

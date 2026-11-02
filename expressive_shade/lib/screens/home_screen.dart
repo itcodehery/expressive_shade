@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/font_config.dart';
+import '../models/qs_tile_model.dart';
 import '../models/shade_mode.dart';
 import '../models/shade_theme.dart';
 import '../models/slider_style.dart';
@@ -141,6 +142,50 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: 'Service',
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        backgroundColor: themeColors.activePill,
+        foregroundColor: themeColors.onActivePill,
+        elevation: 6,
+        icon: const Icon(Icons.sync_rounded),
+        label: Text(
+          'Update Shade',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: themeColors.onActivePill,
+          ),
+        ),
+        onPressed: () async {
+          HapticFeedback.mediumImpact();
+          await state.applyAndSyncToShade();
+          await SystemPermissionsService.deployCustomShade('quick_settings');
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    Icon(Icons.check_circle_rounded, color: themeColors.onActivePill, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Shade updated & opened with latest settings!',
+                      style: state.selectedFont.textStyleBuilder(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: themeColors.onActivePill,
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: themeColors.activePill,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+            );
+          }
+        },
       ),
     );
   }
@@ -359,7 +404,149 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             ),
           );
         }),
+        const SizedBox(height: 28),
+
+        Text(
+          'Network Tile Configuration',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Toggle between the unified Internet pill or separate dedicated Wi-Fi and Mobile Data tiles.',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 14,
+            color: colors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        // Option 1: Unified Internet Tile
+        _buildNetworkTileOption(
+          title: 'Unified Internet Tile',
+          subtitle: 'Combined Wi-Fi & Mobile Data in a single expandable 1x2 pill.',
+          icon: Icons.wifi_find_rounded,
+          isSelected: state.networkTileStyle == NetworkTileStyle.unified,
+          colors: colors,
+          font: state.selectedFont,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            state.setNetworkTileStyle(NetworkTileStyle.unified);
+          },
+        ),
+        const SizedBox(height: 12),
+
+        // Option 2: Separate Wi-Fi & Mobile Data Tiles
+        _buildNetworkTileOption(
+          title: 'Separate Wi-Fi & Mobile Data',
+          subtitle: 'Individual tiles for Wi-Fi and Mobile Data with direct one-tap toggles.',
+          icon: Icons.signal_cellular_alt_rounded,
+          isSelected: state.networkTileStyle == NetworkTileStyle.separate,
+          colors: colors,
+          font: state.selectedFont,
+          onTap: () {
+            HapticFeedback.lightImpact();
+            state.setNetworkTileStyle(NetworkTileStyle.separate);
+          },
+        ),
       ],
+    );
+  }
+
+  Widget _buildNetworkTileOption({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isSelected,
+    required ExpressiveThemeColors colors,
+    required FontConfig font,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(24),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: isSelected ? colors.activePill.withValues(alpha: 0.15) : colors.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected ? colors.activePill : Colors.transparent,
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: isSelected ? colors.activePill : colors.inactivePill,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Center(
+                child: Icon(
+                  icon,
+                  size: 24,
+                  color: isSelected ? colors.onActivePill : colors.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: font.textStyleBuilder(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: font.textStyleBuilder(
+                      fontSize: 13,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 24,
+              height: 24,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected ? colors.activePill : Colors.transparent,
+                border: Border.all(
+                  color: isSelected ? colors.activePill : colors.textSecondary.withValues(alpha: 0.5),
+                  width: 2,
+                ),
+              ),
+              child: isSelected
+                  ? Center(
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: colors.onActivePill,
+                        ),
+                      ),
+                    )
+                  : null,
+            ),
+          ],
+        ),
+      ),
     );
   }
 

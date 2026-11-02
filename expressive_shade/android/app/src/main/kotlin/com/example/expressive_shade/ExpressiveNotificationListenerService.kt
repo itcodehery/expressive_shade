@@ -3,12 +3,14 @@ package com.example.expressive_shade
 import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.Bitmap
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -117,13 +119,31 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 activeController.packageName
             }
 
-            mapOf(
+            // Extract album artwork bitmap if available
+            val artBitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+            val artBytes = artBitmap?.let { bmp ->
+                try {
+                    val stream = ByteArrayOutputStream()
+                    val scaled = Bitmap.createScaledBitmap(bmp, 256, 256, true)
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+                    stream.toByteArray()
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            val res = mutableMapOf<String, Any>(
                 "title" to title,
                 "artist" to artist,
                 "appName" to appName,
                 "isPlaying" to isPlaying,
                 "progress" to progress
             )
+            if (artBytes != null) {
+                res["artwork"] = artBytes
+            }
+            res
         } catch (e: Exception) {
             null
         }

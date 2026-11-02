@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/font_config.dart';
+import '../models/notification_model.dart';
 import '../models/qs_tile_model.dart';
 import '../models/shade_mode.dart';
 import '../providers/shade_state_provider.dart';
@@ -16,8 +18,13 @@ import 'expressive_slider.dart';
 
 class InteractiveShadeCanvas extends StatefulWidget {
   final ExpressiveThemeColors colors;
+  final void Function(VoidCallback action)? onDismissAndExecute;
 
-  const InteractiveShadeCanvas({super.key, required this.colors});
+  const InteractiveShadeCanvas({
+    super.key,
+    required this.colors,
+    this.onDismissAndExecute,
+  });
 
   @override
   State<InteractiveShadeCanvas> createState() => _InteractiveShadeCanvasState();
@@ -26,33 +33,109 @@ class InteractiveShadeCanvas extends StatefulWidget {
 class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     with SingleTickerProviderStateMixin {
   late PageController _pageController;
+  final ScrollController _unifiedScrollController = ScrollController();
+  final ValueNotifier<TileImpulse?> _tileImpulseNotifier = ValueNotifier<TileImpulse?>(null);
+  late AnimationController _qsBouncyController;
+  late Animation<double> _bouncyCurveAnimation;
+  bool _isDraggingQs = false;
+  Timer? _clockTimer;
+  DateTime _currentTime = DateTime.now();
   bool _isEditMode = false;
   String? _selectedTileId;
+  String _lastTarget = '';
+
+  void _handleTileAction(VoidCallback action) {
+    if (widget.onDismissAndExecute != null) {
+      widget.onDismissAndExecute!(action);
+    } else {
+      action();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     final initialPage = context.read<ShadeStateProvider>().splitTabIndex;
+    final initialExpanded = context.read<ShadeStateProvider>().isUnifiedQsExpanded;
     _pageController = PageController(initialPage: initialPage);
+    _qsBouncyController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 380),
+      value: initialExpanded ? 1.0 : 0.0,
+    );
+    _bouncyCurveAnimation = CurvedAnimation(
+      parent: _qsBouncyController,
+      curve: Curves.easeOutBack, // Android 17 Expressive Spring Bounce
+      reverseCurve: Curves.easeInOutCubic,
+    );
+    _currentTime = DateTime.now();
+    _clockTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() {
+          _currentTime = DateTime.now();
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _clockTimer?.cancel();
+    _tileImpulseNotifier.dispose();
+    _qsBouncyController.dispose();
     _pageController.dispose();
+    _unifiedScrollController.dispose();
     super.dispose();
+  }
+
+  void _handleTargetScroll(ShadeStateProvider state) {
+    if (state.targetPanel != _lastTarget) {
+      _lastTarget = state.targetPanel;
+      if (state.shadeMode == ShadeMode.unified) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_unifiedScrollController.hasClients) {
+            if (_lastTarget == 'notifications') {
+              _unifiedScrollController.animateTo(
+                180.0,
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutCubic,
+              );
+            } else {
+              _unifiedScrollController.animateTo(
+                0.0,
+                duration: const Duration(milliseconds: 250),
+                curve: Curves.easeOutCubic,
+              );
+            }
+          }
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ShadeStateProvider>();
     final colors = widget.colors;
+    _handleTargetScroll(state);
+
+    final isExpanded = state.isUnifiedQsExpanded;
+    if (!_isDraggingQs) {
+      if (isExpanded && _qsBouncyController.status != AnimationStatus.forward && _qsBouncyController.value < 1.0) {
+        _qsBouncyController.animateTo(1.0, curve: Curves.easeOutBack, duration: const Duration(milliseconds: 380));
+      } else if (!isExpanded && _qsBouncyController.status != AnimationStatus.reverse && _qsBouncyController.value > 0.0) {
+        _qsBouncyController.animateTo(0.0, curve: Curves.easeInOutCubic, duration: const Duration(milliseconds: 280));
+      }
+    }
 
     return Container(
       color: colors.background,
       child: SafeArea(
+        top: false, // Render behind and over the status bar completely
+        bottom: true,
         child: Column(
           children: [
-            // Status Bar & System Header
+            // Status Bar & System Header (renders directly over physical status bar)
             _buildStatusBar(state, colors),
 
             // Secondary Quick Actions Header or Edit Tiles Header
@@ -61,18 +144,12 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
             else
               _buildHeaderControls(state, colors),
 
-            // In Split Mode: Segmented View Selector (Notifications vs Quick Settings)
-            if (state.shadeMode == ShadeMode.split && !_isEditMode) ...[
-              const SizedBox(height: 12),
-              _buildSplitModeSegmentedTabs(state, colors),
-            ],
+            const SizedBox(height: 6),
 
-            const SizedBox(height: 14),
-
-            // Main Content Area
+            // Main Canvas: Dual Mode Engine (Split vs Unified)
             Expanded(
               child: state.shadeMode == ShadeMode.split
-                  ? _buildSplitShadePageView(state, colors)
+                  ? _buildSplitModeView(state, colors)
                   : _buildUnifiedShadeView(state, colors),
             ),
           ],
@@ -83,17 +160,26 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
 
   Widget _buildStatusBar(ShadeStateProvider state, ExpressiveThemeColors colors) {
     final font = state.selectedFont;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    final hour = _currentTime.hour.toString().padLeft(2, '0');
+    final minute = _currentTime.minute.toString().padLeft(2, '0');
+    final timeStr = '$hour:$minute';
+
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    final dateStr = '${weekdays[_currentTime.weekday - 1]}, ${months[_currentTime.month - 1]} ${_currentTime.day}';
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      padding: EdgeInsets.fromLTRB(24, topPadding > 0 ? topPadding + 6 : 14, 24, 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Clock & Date
+          // Live Clock & Date
           Row(
             children: [
               Text(
-                '10:29',
+                timeStr,
                 style: font.textStyleBuilder(
                   fontSize: 16.0,
                   fontWeight: FontWeight.w700,
@@ -102,7 +188,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
               ),
               const SizedBox(width: 8),
               Text(
-                'Tue, Jan 13',
+                dateStr,
                 style: font.textStyleBuilder(
                   fontSize: 13.0,
                   fontWeight: FontWeight.w500,
@@ -112,7 +198,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
             ],
           ),
 
-          // Status Icons
+          // Status Icons & Live Battery Percentage
           Row(
             children: [
               Icon(Icons.wifi_rounded, size: 16, color: colors.textPrimary),
@@ -128,7 +214,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                 child: Row(
                   children: [
                     Text(
-                      '100%',
+                      '${state.batteryLevel}%',
                       style: font.textStyleBuilder(
                         fontSize: 11.0,
                         fontWeight: FontWeight.w700,
@@ -136,7 +222,11 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Icon(Icons.battery_full_rounded, size: 14, color: colors.activePill),
+                    Icon(
+                      state.isCharging ? Icons.battery_charging_full_rounded : Icons.battery_full_rounded,
+                      size: 14,
+                      color: colors.activePill,
+                    ),
                   ],
                 ),
               ),
@@ -154,7 +244,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
       child: Row(
         children: [
-          // Carrier Pill
+          // Live Carrier Pill
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
@@ -167,7 +257,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                 Icon(Icons.sim_card_rounded, size: 14, color: colors.activePill),
                 const SizedBox(width: 6),
                 Text(
-                  'Google Fi 5G',
+                  state.carrierName,
                   style: font.textStyleBuilder(
                     fontSize: 12.0,
                     fontWeight: FontWeight.w600,
@@ -196,6 +286,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           // Settings Gear
           _buildCircleHeaderBtn(Icons.settings_outlined, colors, () {
             HapticFeedback.lightImpact();
+            SystemHardwareService.openWifiSettings();
           }),
           const SizedBox(width: 8),
 
@@ -226,7 +317,6 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
               });
             },
           ),
-          const SizedBox(width: 4),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -379,19 +469,10 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
-        curve: Curves.fastOutSlowIn,
         padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? colors.activePill : Colors.transparent,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            if (isSelected)
-              BoxShadow(
-                color: colors.activePill.withValues(alpha: 0.3),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
-              ),
-          ],
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -407,17 +488,19 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
             if (badgeCount > 0) ...[
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                 decoration: BoxDecoration(
-                  color: isSelected ? colors.onActivePill.withValues(alpha: 0.25) : colors.activePill,
-                  shape: BoxShape.circle,
+                  color: isSelected
+                      ? colors.onActivePill.withValues(alpha: 0.20)
+                      : colors.activePill.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  badgeCount.toString(),
+                  '$badgeCount',
                   style: font.textStyleBuilder(
-                    fontSize: 10.0,
+                    fontSize: 11.0,
                     fontWeight: FontWeight.w700,
-                    color: isSelected ? colors.onActivePill : Colors.white,
+                    color: isSelected ? colors.onActivePill : colors.activePill,
                   ),
                 ),
               ),
@@ -428,22 +511,30 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     );
   }
 
-  Widget _buildSplitShadePageView(ShadeStateProvider state, ExpressiveThemeColors colors) {
-    return PageView(
-      controller: _pageController,
-      onPageChanged: (pageIndex) {
-        state.setSplitTabIndex(pageIndex);
-      },
+  Widget _buildSplitModeView(ShadeStateProvider state, ExpressiveThemeColors colors) {
+    return Column(
       children: [
-        _buildNotificationsPanel(state, colors),
-        _buildQuickSettingsPanel(state, colors),
+        _buildSplitModeSegmentedTabs(state, colors),
+        const SizedBox(height: 12),
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (index) {
+              state.setSplitTabIndex(index);
+            },
+            children: [
+              _buildNotificationsPanel(state, colors),
+              _buildQuickSettingsPanel(state, colors),
+            ],
+          ),
+        ),
       ],
     );
   }
 
   Widget _buildQuickSettingsPanel(ShadeStateProvider state, ExpressiveThemeColors colors) {
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       children: [
         // Brightness Capsule Slider
         ExpressiveSlider(
@@ -484,6 +575,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           appSource: state.mediaApp,
           isPlaying: state.isPlaying,
           progress: state.mediaProgress,
+          artwork: state.mediaArtwork,
           colors: colors,
           font: state.selectedFont,
           onPlayPause: () => state.togglePlayPause(),
@@ -497,8 +589,15 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
   }
 
   Widget _buildDynamicTilesGrid(ShadeStateProvider state, ExpressiveThemeColors colors) {
+    return _buildDynamicTilesGridCustom(state, colors, _packTilesIntoRows(state.tiles));
+  }
+
+  Widget _buildDynamicTilesGridCustom(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    List<List<QsTileModel>> rows,
+  ) {
     final font = state.selectedFont;
-    final rows = _packTilesIntoRows(state.tiles);
 
     return Column(
       children: [
@@ -514,20 +613,33 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                     tile: rows[r][t],
                     colors: colors,
                     font: font,
+                    row: r,
+                    col: t,
+                    impulseNotifier: _tileImpulseNotifier,
                     isEditing: _isEditMode,
                     isSelected: _isEditMode && _selectedTileId == rows[r][t].id,
                     onResizeTap: () => state.toggleTileSize(rows[r][t].id),
-                    onInnerButtonTap: (rows[r][t].id == 'wifi' || rows[r][t].id == 'bluetooth')
+                    onInnerButtonTap: (rows[r][t].id == 'wifi' || rows[r][t].id == 'bluetooth' || rows[r][t].id == 'mobile_data')
                         ? () {
-                            // Tapping inner button toggles wifi/mobile data or bluetooth directly
-                            state.toggleTile(rows[r][t].id);
+                            _handleTileAction(() {
+                              state.toggleTile(rows[r][t].id);
+                            });
                           }
                         : null,
-                    onOuterPillTap: (rows[r][t].id == 'wifi' || rows[r][t].id == 'bluetooth')
+                    onOuterPillTap: (rows[r][t].id == 'wifi' || rows[r][t].id == 'bluetooth' || rows[r][t].id == 'mobile_data')
                         ? () {
-                            // Tapping pill outside the inner button opens floating dialog box
                             if (rows[r][t].id == 'wifi') {
-                              _showInternetDialog(context, state, colors);
+                              if (state.networkTileStyle == NetworkTileStyle.unified) {
+                                _showInternetDialog(context, state, colors);
+                              } else {
+                                _handleTileAction(() {
+                                  SystemHardwareService.openWifiSettings();
+                                });
+                              }
+                            } else if (rows[r][t].id == 'mobile_data') {
+                              _handleTileAction(() {
+                                SystemHardwareService.openMobileDataSettings();
+                              });
                             } else {
                               _showBluetoothDialog(context, state, colors);
                             }
@@ -537,7 +649,9 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                       if (_isEditMode) {
                         setState(() => _selectedTileId = rows[r][t].id);
                       } else {
-                        state.toggleTile(rows[r][t].id);
+                        _handleTileAction(() {
+                          state.toggleTile(rows[r][t].id);
+                        });
                       }
                     },
                     onLongPress: () {
@@ -599,65 +713,217 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     );
   }
 
+  // 2-State Unified Mode View:
+  // NO tab switcher is rendered here.
+  // Pulling down from left side automatically scrolls directly to the Notifications container!
+  // Quick Settings expansion animates in a bouncy spring manner (Curves.easeOutBack).
+  // Brightness and Volume sliders are only visible when expanded.
+  // Expand chip is removed in favor of downward swipe gesture.
   Widget _buildUnifiedShadeView(ShadeStateProvider state, ExpressiveThemeColors colors) {
     final font = state.selectedFont;
+    final allRows = _packTilesIntoRows(state.tiles);
+    final firstTwoRows = allRows.take(2).toList();
+    final remainingRows = allRows.skip(2).toList();
 
-    return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      children: [
-        // Quick Settings elements (padded 20px horizontally)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Brightness Capsule Slider
-              ExpressiveSlider(
-                value: state.brightness,
-                onChanged: (val) => state.setBrightness(val),
-                leadingIcon: Icons.wb_sunny_rounded,
-                colors: colors,
-                style: state.sliderStyle,
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollUpdateNotification) {
+          if (notification.metrics.pixels <= 0) {
+            final scrollDelta = notification.scrollDelta ?? 0;
+            if (scrollDelta < 0 && !state.isUnifiedQsExpanded) {
+              // Overscrolling downwards expands QS in real-time!
+              final delta = -scrollDelta / 200.0;
+              _qsBouncyController.value = (_qsBouncyController.value + delta).clamp(0.0, 1.0);
+            } else if (scrollDelta > 0 && _qsBouncyController.value > 0) {
+              // Scrolling upwards from top contracts QS in real-time!
+              final delta = scrollDelta / 200.0;
+              _qsBouncyController.value = (_qsBouncyController.value - delta).clamp(0.0, 1.0);
+            }
+          }
+        } else if (notification is ScrollEndNotification) {
+          if (!_isDraggingQs) {
+            if (_qsBouncyController.value > 0.45 && !state.isUnifiedQsExpanded) {
+              HapticFeedback.lightImpact();
+              _qsBouncyController.animateTo(1.0, curve: Curves.easeOutBack, duration: const Duration(milliseconds: 320));
+              state.setUnifiedQsExpanded(true);
+            } else if (_qsBouncyController.value < 0.45 && state.isUnifiedQsExpanded) {
+              HapticFeedback.lightImpact();
+              _qsBouncyController.animateTo(0.0, curve: Curves.easeInOutCubic, duration: const Duration(milliseconds: 260));
+              state.setUnifiedQsExpanded(false);
+            }
+          }
+        }
+        return false;
+      },
+      child: ListView(
+        controller: _unifiedScrollController,
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        children: [
+          // Quick Settings Section with real-time drag-to-expand / drag-to-contract support
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragStart: (_) {
+              _isDraggingQs = true;
+            },
+            onVerticalDragUpdate: (details) {
+              // 1:1 real-time drag expansion!
+              final delta = details.delta.dy / 220.0;
+              _qsBouncyController.value = (_qsBouncyController.value + delta).clamp(0.0, 1.0);
+            },
+            onVerticalDragEnd: (details) {
+              _isDraggingQs = false;
+              final velocity = details.primaryVelocity ?? 0;
+              if (velocity > 180 || (_qsBouncyController.value > 0.45 && velocity > -150)) {
+                // Dragged down past threshold or downward fling: snap to 1.0 with bouncy spring
+                HapticFeedback.lightImpact();
+                _qsBouncyController.animateTo(1.0, curve: Curves.easeOutBack, duration: const Duration(milliseconds: 320));
+                state.setUnifiedQsExpanded(true);
+              } else {
+                // Dragged up or upward fling: snap back to 0.0
+                HapticFeedback.lightImpact();
+                _qsBouncyController.animateTo(0.0, curve: Curves.easeInOutCubic, duration: const Duration(milliseconds: 260));
+                state.setUnifiedQsExpanded(false);
+              }
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Brightness & Volume Sliders (ONLY visible in expanded state with bouncy animation)
+                  AnimatedBuilder(
+                    animation: _bouncyCurveAnimation,
+                    builder: (context, child) {
+                      if (_qsBouncyController.value <= 0.001) {
+                        return const SizedBox.shrink();
+                      }
+                      return SizeTransition(
+                        sizeFactor: _bouncyCurveAnimation,
+                        alignment: Alignment.topCenter,
+                        child: FadeTransition(
+                          opacity: _qsBouncyController,
+                          child: child,
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        children: [
+                          // Brightness Capsule Slider
+                          ExpressiveSlider(
+                            value: state.brightness,
+                            onChanged: (val) => state.setBrightness(val),
+                            leadingIcon: Icons.wb_sunny_rounded,
+                            colors: colors,
+                            style: state.sliderStyle,
+                          ),
+                          const SizedBox(height: 10),
+
+                          // Volume Capsule Slider
+                          ExpressiveSlider(
+                            value: state.volume,
+                            onChanged: (val) => state.setVolume(val),
+                            leadingIcon: state.volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                            colors: colors,
+                            style: state.sliderStyle,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Dynamic Tiles Grid: First 2 Rows (Always visible)
+                  _buildDynamicTilesGridCustom(state, colors, firstTwoRows),
+
+                  // Dynamic Tiles Grid: Remaining Rows (Animated with bouncy spring expansion)
+                  if (remainingRows.isNotEmpty) ...[
+                    AnimatedBuilder(
+                      animation: _bouncyCurveAnimation,
+                      builder: (context, child) {
+                        if (_qsBouncyController.value <= 0.001) {
+                          return const SizedBox.shrink();
+                        }
+                        return SizeTransition(
+                          sizeFactor: _bouncyCurveAnimation,
+                          alignment: Alignment.topCenter,
+                          child: FadeTransition(
+                            opacity: _qsBouncyController,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: _buildDynamicTilesGridCustom(state, colors, remainingRows),
+                      ),
+                    ),
+                  ],
+
+                  // Expressive Media Card (Animated bouncy or active)
+                  if (state.isPlaying) ...[
+                    const SizedBox(height: 12),
+                    ExpressiveMediaCard(
+                      title: state.mediaTitle,
+                      artist: state.mediaArtist,
+                      appSource: state.mediaApp,
+                      isPlaying: state.isPlaying,
+                      progress: state.mediaProgress,
+                      artwork: state.mediaArtwork,
+                      colors: colors,
+                      font: font,
+                      onPlayPause: () => state.togglePlayPause(),
+                      onSkipNext: () => state.skipNextMedia(),
+                      onSkipPrevious: () => state.skipPreviousMedia(),
+                      onProgressChanged: (val) => state.setMediaProgress(val),
+                    ),
+                  ] else ...[
+                    AnimatedBuilder(
+                      animation: _bouncyCurveAnimation,
+                      builder: (context, child) {
+                        if (_qsBouncyController.value <= 0.001) {
+                          return const SizedBox.shrink();
+                        }
+                        return SizeTransition(
+                          sizeFactor: _bouncyCurveAnimation,
+                          alignment: Alignment.topCenter,
+                          child: FadeTransition(
+                            opacity: _qsBouncyController,
+                            child: child,
+                          ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: ExpressiveMediaCard(
+                          title: state.mediaTitle,
+                          artist: state.mediaArtist,
+                          appSource: state.mediaApp,
+                          isPlaying: state.isPlaying,
+                          progress: state.mediaProgress,
+                          artwork: state.mediaArtwork,
+                          colors: colors,
+                          font: font,
+                          onPlayPause: () => state.togglePlayPause(),
+                          onSkipNext: () => state.skipNextMedia(),
+                          onSkipPrevious: () => state.skipPreviousMedia(),
+                          onProgressChanged: (val) => state.setMediaProgress(val),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 12),
-
-              // Volume Capsule Slider
-              ExpressiveSlider(
-                value: state.volume,
-                onChanged: (val) => state.setVolume(val),
-                leadingIcon: state.volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                colors: colors,
-                style: state.sliderStyle,
-              ),
-              const SizedBox(height: 16),
-
-              // Dynamic Tiles Grid
-              _buildDynamicTilesGrid(state, colors),
-              const SizedBox(height: 20),
-
-              // Expressive Media Card
-              ExpressiveMediaCard(
-                title: state.mediaTitle,
-                artist: state.mediaArtist,
-                appSource: state.mediaApp,
-                isPlaying: state.isPlaying,
-                progress: state.mediaProgress,
-                colors: colors,
-                font: font,
-                onPlayPause: () => state.togglePlayPause(),
-                onSkipNext: () => state.skipNextMedia(),
-                onSkipPrevious: () => state.skipPreviousMedia(),
-                onProgressChanged: (val) => state.setMediaProgress(val),
-              ),
-            ],
+            ),
           ),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 12),
 
-        // Distinct Division: Notifications Container with Rounded Top Corners & Acrylic Blur
-        _buildNotificationsContainer(state, colors, font),
-        const SizedBox(height: 24),
-      ],
+          // Distinct Division: Notifications Container with Rounded Top Corners & Acrylic Blur
+          _buildNotificationsContainer(state, colors, font),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -673,6 +939,12 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     final containerBg = colors.isDark
         ? colors.surface.withValues(alpha: containerAlpha)
         : colors.surface.withValues(alpha: (containerAlpha + 0.15).clamp(0.2, 0.75));
+
+    // Group notifications by appName for packed clustering
+    final Map<String, List<NotificationModel>> grouped = {};
+    for (final notif in state.notifications) {
+      grouped.putIfAbsent(notif.appName, () => []).add(notif);
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -705,7 +977,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                 ),
               ],
             ),
-            padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -755,19 +1027,21 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                     ),
                   )
                 else ...[
-                  for (final notif in state.notifications)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: ExpressiveNotificationCard(
-                        notification: notif,
+                  for (final entry in grouped.entries) ...[
+                    for (int i = 0; i < entry.value.length; i++)
+                      ExpressiveNotificationCard(
+                        notification: entry.value[i],
                         colors: colors,
                         font: font,
-                        onDismiss: () => state.dismissNotification(notif.id),
+                        isFirstInGroup: i == 0,
+                        isLastInGroup: i == entry.value.length - 1,
+                        groupCount: entry.value.length,
+                        onDismiss: () => state.dismissNotification(entry.value[i].id),
                         onActionTap: (_) {
                           HapticFeedback.lightImpact();
                         },
                       ),
-                    ),
+                  ],
                   // Clear All Action Row inside container
                   _buildClearAllActionRow(state, colors, font),
                 ],
@@ -860,6 +1134,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     ExpressiveThemeColors colors,
   ) {
     final font = state.selectedFont;
+    final wifiTile = state.tiles.firstWhere((t) => t.id == 'wifi', orElse: () => state.tiles.first);
 
     showDialog(
       context: context,
@@ -917,7 +1192,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                 ),
                 const SizedBox(height: 18),
 
-                // Connected Wi-Fi Card
+                // Connected Real Wi-Fi Card
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -934,7 +1209,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Emad WiFi_EXT',
+                              wifiTile.title,
                               style: font.textStyleBuilder(
                                 fontSize: 15.0,
                                 fontWeight: FontWeight.w700,
@@ -943,7 +1218,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Connected • 5 GHz • Excellent signal',
+                              wifiTile.subtitle ?? 'Wi-Fi',
                               style: font.textStyleBuilder(
                                 fontSize: 12.0,
                                 color: colors.activePill,
@@ -963,7 +1238,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                 ),
                 const SizedBox(height: 12),
 
-                // Mobile Data Row
+                // Real Mobile Network Card
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
@@ -987,7 +1262,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                               ),
                             ),
                             Text(
-                              'Vodafone, LTE',
+                              state.carrierName,
                               style: font.textStyleBuilder(
                                 fontSize: 11.5,
                                 color: colors.textSecondary,
@@ -996,29 +1271,15 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           ],
                         ),
                       ),
-                      Switch(
-                        value: true,
-                        activeTrackColor: colors.activePill.withValues(alpha: 0.5),
-                        thumbColor: WidgetStateProperty.all(colors.activePill),
-                        onChanged: (_) {},
+                      IconButton(
+                        icon: Icon(Icons.open_in_new_rounded, color: colors.textSecondary, size: 18),
+                        onPressed: () {
+                          SystemHardwareService.openWifiSettings();
+                        },
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // Available Wi-Fi Networks
-                Text(
-                  'Available Networks',
-                  style: font.textStyleBuilder(
-                    fontSize: 13.0,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _buildAvailableNetworkItem('Home_5G_Ultra', 'Secured with WPA3', colors, font),
-                _buildAvailableNetworkItem('Studio_Guest', 'Open Network', colors, font),
                 const SizedBox(height: 16),
 
                 // Dialog Footer
@@ -1068,52 +1329,13 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     );
   }
 
-  Widget _buildAvailableNetworkItem(
-    String name,
-    String security,
-    ExpressiveThemeColors colors,
-    FontConfig font,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(Icons.wifi_lock_rounded, size: 18, color: colors.textSecondary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  name,
-                  style: font.textStyleBuilder(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                Text(
-                  security,
-                  style: font.textStyleBuilder(
-                    fontSize: 11.0,
-                    color: colors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, size: 18, color: colors.textSecondary),
-        ],
-      ),
-    );
-  }
-
   void _showBluetoothDialog(
     BuildContext context,
     ShadeStateProvider state,
     ExpressiveThemeColors colors,
   ) {
     final font = state.selectedFont;
+    final btTile = state.tiles.firstWhere((t) => t.id == 'bluetooth', orElse: () => state.tiles.first);
 
     showDialog(
       context: context,
@@ -1154,7 +1376,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                             ),
                           ),
                           Text(
-                            'Paired & Active Devices',
+                            btTile.isActive ? (btTile.subtitle ?? 'On') : 'Off',
                             style: font.textStyleBuilder(
                               fontSize: 12.0,
                               color: colors.textSecondary,
@@ -1163,32 +1385,42 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                         ],
                       ),
                     ),
-                    IconButton(
-                      icon: Icon(Icons.close_rounded, color: colors.textSecondary, size: 20),
-                      onPressed: () => Navigator.of(ctx).pop(),
+                    Switch(
+                      value: btTile.isActive,
+                      activeTrackColor: colors.activePill.withValues(alpha: 0.5),
+                      thumbColor: WidgetStateProperty.all(colors.activePill),
+                      onChanged: (_) {
+                        state.toggleTile('bluetooth');
+                      },
                     ),
                   ],
                 ),
                 const SizedBox(height: 18),
 
-                // Connected Device Card
+                // Real Connected/Active Device Status Card
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: colors.activePill.withValues(alpha: 0.14),
+                    color: btTile.isActive ? colors.activePill.withValues(alpha: 0.14) : colors.background,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: colors.activePill.withValues(alpha: 0.3)),
+                    border: Border.all(
+                      color: btTile.isActive ? colors.activePill.withValues(alpha: 0.3) : colors.textSecondary.withValues(alpha: 0.1),
+                    ),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.headphones_rounded, color: colors.activePill, size: 24),
+                      Icon(
+                        btTile.isActive ? Icons.bluetooth_connected_rounded : Icons.bluetooth_disabled_rounded,
+                        color: btTile.isActive ? colors.activePill : colors.textSecondary,
+                        size: 24,
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Emad\'s Pixel Buds Pro',
+                              btTile.isActive ? (btTile.subtitle ?? 'Bluetooth On') : 'Bluetooth Off',
                               style: font.textStyleBuilder(
                                 fontSize: 15.0,
                                 fontWeight: FontWeight.w700,
@@ -1197,10 +1429,10 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Active • 100% battery',
+                              btTile.isActive ? 'Ready for paired devices' : 'Turn on to connect devices',
                               style: font.textStyleBuilder(
                                 fontSize: 12.0,
-                                color: colors.activePill,
+                                color: colors.textSecondary,
                               ),
                             ),
                           ],
@@ -1215,21 +1447,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // Previously Paired Devices
-                Text(
-                  'Previously Connected',
-                  style: font.textStyleBuilder(
-                    fontSize: 13.0,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                _buildPairedDeviceItem('Car Multimedia', Icons.directions_car_rounded, colors, font),
-                _buildPairedDeviceItem('Smartwatch 2', Icons.watch_rounded, colors, font),
-                const SizedBox(height: 16),
+                const SizedBox(height: 18),
 
                 // Dialog Footer
                 Row(
@@ -1241,7 +1459,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                         SystemHardwareService.openBluetoothSettings();
                       },
                       child: Text(
-                        'Pair new device',
+                        'Device settings',
                         style: font.textStyleBuilder(
                           fontSize: 13.0,
                           fontWeight: FontWeight.w600,
@@ -1275,34 +1493,6 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           ),
         );
       },
-    );
-  }
-
-  Widget _buildPairedDeviceItem(
-    String name,
-    IconData icon,
-    ExpressiveThemeColors colors,
-    FontConfig font,
-  ) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: colors.textSecondary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              name,
-              style: font.textStyleBuilder(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                color: colors.textPrimary,
-              ),
-            ),
-          ),
-          Icon(Icons.chevron_right_rounded, size: 18, color: colors.textSecondary),
-        ],
-      ),
     );
   }
 }

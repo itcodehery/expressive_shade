@@ -110,6 +110,9 @@ class ExpressiveOverlayService : Service() {
             gravity = Gravity.TOP or Gravity.START
             x = 0
             y = 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
         }
 
         var startX = 0f
@@ -157,7 +160,7 @@ class ExpressiveOverlayService : Service() {
         } catch (_: Exception) {}
     }
 
-    private fun onTopSwipeTriggered(target: String) {
+    fun onTopSwipeTriggered(target: String) {
         // If accessibility service is available, dismiss stock shade and deploy
         ExpressiveAccessibilityService.instance?.let { acc ->
             acc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)

@@ -1,8 +1,23 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/font_config.dart';
 import '../models/qs_tile_model.dart';
 import '../theme/m3_expressive_theme.dart';
+
+class TileImpulse {
+  final String tileId;
+  final int row;
+  final int col;
+  final int timestamp;
+
+  const TileImpulse({
+    required this.tileId,
+    required this.row,
+    required this.col,
+    required this.timestamp,
+  });
+}
 
 class ExpressivePill extends StatefulWidget {
   final QsTileModel tile;
@@ -15,6 +30,9 @@ class ExpressivePill extends StatefulWidget {
   final VoidCallback? onResizeTap;
   final VoidCallback? onInnerButtonTap;
   final VoidCallback? onOuterPillTap;
+  final int row;
+  final int col;
+  final ValueNotifier<TileImpulse?>? impulseNotifier;
 
   const ExpressivePill({
     super.key,
@@ -28,6 +46,9 @@ class ExpressivePill extends StatefulWidget {
     this.onResizeTap,
     this.onInnerButtonTap,
     this.onOuterPillTap,
+    this.row = 0,
+    this.col = 0,
+    this.impulseNotifier,
   });
 
   @override
@@ -35,41 +56,104 @@ class ExpressivePill extends StatefulWidget {
 }
 
 class _ExpressivePillState extends State<ExpressivePill>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _animController;
   late Animation<double> _scaleAnimation;
+  late AnimationController _neighborController;
+  late Animation<double> _neighborScaleAnimation;
   double _dragAccumulator = 0.0;
 
   @override
   void initState() {
     super.initState();
+    // 1. Primary Bouncy Press Animation (Curves.easeOutBack for expressive overshoot bounce)
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 140),
-      reverseDuration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 120),
+      reverseDuration: const Duration(milliseconds: 320),
     );
 
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.94).animate(
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.91).animate(
       CurvedAnimation(
         parent: _animController,
         curve: Curves.easeInQuad,
+        reverseCurve: Curves.easeOutBack, // M3 Expressive Spring Bounce
+      ),
+    );
+
+    // 2. Spatial Neighbor Deflection Animation
+    _neighborController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 130),
+      reverseDuration: const Duration(milliseconds: 260),
+    );
+
+    _neighborScaleAnimation = Tween<double>(begin: 1.0, end: 0.955).animate(
+      CurvedAnimation(
+        parent: _neighborController,
+        curve: Curves.easeOutQuad,
         reverseCurve: Curves.easeOutBack,
       ),
     );
+
+    widget.impulseNotifier?.addListener(_onImpulseReceived);
+  }
+
+  @override
+  void didUpdateWidget(covariant ExpressivePill oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.impulseNotifier != oldWidget.impulseNotifier) {
+      oldWidget.impulseNotifier?.removeListener(_onImpulseReceived);
+      widget.impulseNotifier?.addListener(_onImpulseReceived);
+    }
   }
 
   @override
   void dispose() {
+    widget.impulseNotifier?.removeListener(_onImpulseReceived);
     _animController.dispose();
+    _neighborController.dispose();
     super.dispose();
   }
 
-  void _handleTapDown(TapDownDetails _) {
-    _animController.forward();
-    HapticFeedback.lightImpact();
+  void _onImpulseReceived() {
+    final impulse = widget.impulseNotifier?.value;
+    if (impulse == null || impulse.tileId == widget.tile.id) return;
+
+    // Euclidean distance in the grid
+    final dr = (widget.row - impulse.row).toDouble();
+    final dc = (widget.col - impulse.col).toDouble();
+    final dist = math.sqrt(dr * dr + dc * dc);
+
+    // Only immediate neighbors (adjacent or diagonal within dist <= 1.5)
+    if (dist <= 1.5 && mounted) {
+      final delayMs = (dist * 35).toInt();
+      Future.delayed(Duration(milliseconds: delayMs), () {
+        if (mounted) {
+          _neighborController.forward().then((_) {
+            if (mounted) {
+              _neighborController.reverse();
+            }
+          });
+        }
+      });
+    }
   }
 
-  void _handleTapUp(TapUpDetails _) {
+  void _handleTapDown([TapDownDetails? _]) {
+    _animController.forward();
+    HapticFeedback.lightImpact();
+
+    // Broadcast spatial impulse to neighboring tiles
+    widget.impulseNotifier?.value = TileImpulse(
+      tileId: widget.tile.id,
+      row: widget.row,
+      col: widget.col,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  void _handleTapUp([TapUpDetails? _]) {
     _animController.reverse();
     widget.onTap();
   }
@@ -88,10 +172,11 @@ class _ExpressivePillState extends State<ExpressivePill>
     final fgColor = tile.isActive ? colors.onActivePill : colors.onInactivePill;
 
     final tileWidget = AnimatedBuilder(
-      animation: _scaleAnimation,
+      animation: Listenable.merge([_scaleAnimation, _neighborScaleAnimation]),
       builder: (context, child) {
+        final totalScale = _scaleAnimation.value * _neighborScaleAnimation.value;
         return Transform.scale(
-          scale: _scaleAnimation.value,
+          scale: totalScale,
           child: child,
         );
       },
@@ -123,30 +208,20 @@ class _ExpressivePillState extends State<ExpressivePill>
           child: Center(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onHorizontalDragStart: (_) {
+              onVerticalDragStart: (_) {
                 _dragAccumulator = 0.0;
                 HapticFeedback.selectionClick();
               },
-              onHorizontalDragUpdate: (details) {
-                _dragAccumulator += details.delta.dx;
-                // If 1x1 and dragged right > 18px -> expand to 1x2!
-                if (!tile.isWide && _dragAccumulator > 18) {
+              onVerticalDragUpdate: (details) {
+                _dragAccumulator += details.delta.dy;
+                if (_dragAccumulator.abs() > 32) {
                   HapticFeedback.mediumImpact();
                   widget.onResizeTap?.call();
-                  _dragAccumulator = -25;
+                  _dragAccumulator = 0.0;
                 }
-                // If 1x2 and dragged left < -18px -> shrink to 1x1!
-                else if (tile.isWide && _dragAccumulator < -18) {
-                  HapticFeedback.mediumImpact();
-                  widget.onResizeTap?.call();
-                  _dragAccumulator = 25;
-                }
-              },
-              onHorizontalDragEnd: (_) {
-                _dragAccumulator = 0.0;
               },
               onTap: () {
-                HapticFeedback.mediumImpact();
+                HapticFeedback.lightImpact();
                 widget.onResizeTap?.call();
               },
               child: Container(
@@ -196,28 +271,22 @@ class _ExpressivePillState extends State<ExpressivePill>
         border: widget.isEditing && widget.isSelected
             ? Border.all(color: Colors.white, width: 2.2)
             : Border.all(color: Colors.transparent, width: 2.2),
-        boxShadow: [
-          if (tile.isActive)
-            BoxShadow(
-              color: colors.activePill.withValues(alpha: 0.28),
-              blurRadius: 16,
-              offset: const Offset(0, 4),
-            ),
-        ],
       ),
       child: Row(
         children: [
           // Inner Button: bigger (48x48) & more squared off (borderRadius: 16) than outer pill
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              HapticFeedback.lightImpact();
+            onTapDown: (_) => _handleTapDown(),
+            onTapUp: (_) {
+              _animController.reverse();
               if (widget.onInnerButtonTap != null) {
                 widget.onInnerButtonTap!();
               } else {
                 widget.onTap();
               }
             },
+            onTapCancel: _handleTapCancel,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 240),
               width: 48,
@@ -243,14 +312,16 @@ class _ExpressivePillState extends State<ExpressivePill>
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                HapticFeedback.lightImpact();
+              onTapDown: (_) => _handleTapDown(),
+              onTapUp: (_) {
+                _animController.reverse();
                 if (widget.onOuterPillTap != null) {
                   widget.onOuterPillTap!();
                 } else {
                   widget.onTap();
                 }
               },
+              onTapCancel: _handleTapCancel,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,14 +380,16 @@ class _ExpressivePillState extends State<ExpressivePill>
           else if (tile.hasDetails)
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () {
-                HapticFeedback.lightImpact();
+              onTapDown: (_) => _handleTapDown(),
+              onTapUp: (_) {
+                _animController.reverse();
                 if (widget.onOuterPillTap != null) {
                   widget.onOuterPillTap!();
                 } else {
                   widget.onTap();
                 }
               },
+              onTapCancel: _handleTapCancel,
               child: Icon(
                 Icons.chevron_right_rounded,
                 size: 20,
@@ -344,14 +417,6 @@ class _ExpressivePillState extends State<ExpressivePill>
         border: widget.isEditing && widget.isSelected
             ? Border.all(color: Colors.white, width: 2.2)
             : Border.all(color: Colors.transparent, width: 2.2),
-        boxShadow: [
-          if (tile.isActive)
-            BoxShadow(
-              color: colors.activePill.withValues(alpha: 0.28),
-              blurRadius: 14,
-              offset: const Offset(0, 4),
-            ),
-        ],
       ),
       child: Center(
         child: Icon(

@@ -6,6 +6,7 @@ class SystemMediaInfo {
   final String appName;
   final bool isPlaying;
   final double progress;
+  final Uint8List? artwork;
 
   const SystemMediaInfo({
     required this.title,
@@ -13,6 +14,7 @@ class SystemMediaInfo {
     required this.appName,
     required this.isPlaying,
     required this.progress,
+    this.artwork,
   });
 }
 
@@ -34,12 +36,20 @@ class SystemMediaService {
       final raw = await _channel.invokeMapMethod<String, dynamic>('getMediaState');
       if (raw == null) return null;
 
+      Uint8List? artBytes;
+      if (raw['artwork'] is Uint8List) {
+        artBytes = raw['artwork'] as Uint8List;
+      } else if (raw['artwork'] is List) {
+        artBytes = Uint8List.fromList(List<int>.from(raw['artwork'] as List));
+      }
+
       return SystemMediaInfo(
         title: raw['title']?.toString() ?? 'Unknown Title',
         artist: raw['artist']?.toString() ?? 'Unknown Artist',
         appName: raw['appName']?.toString() ?? 'Music',
         isPlaying: raw['isPlaying'] == true,
         progress: (raw['progress'] as num?)?.toDouble() ?? 0.0,
+        artwork: artBytes,
       );
     } catch (_) {
       return null;
