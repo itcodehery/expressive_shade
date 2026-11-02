@@ -95,6 +95,9 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   void _dismissOverlay() {
     if (_isDismissing) return;
     _isDismissing = true;
+    try {
+      context.read<ShadeStateProvider>().flushSave();
+    } catch (_) {}
     _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
@@ -107,6 +110,9 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   void _dismissOverlayAndExecute(VoidCallback action) {
     if (_isDismissing) return;
     _isDismissing = true;
+    try {
+      context.read<ShadeStateProvider>().flushSave();
+    } catch (_) {}
     _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');

@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../models/qs_tile_model.dart';
 import '../../../services/system_hardware_service.dart';
+import '../../../services/system_settings_service.dart';
 import 'hardware_event.dart';
 import 'hardware_state.dart';
 
@@ -211,6 +213,9 @@ class HardwareBloc extends Bloc<HardwareEvent, HardwareState> {
     final tile = state.tiles[index];
     final updated = List<QsTileModel>.from(state.tiles);
     updated[index] = tile.copyWith(isWide: !tile.isWide);
+    SystemSettingsService.saveSettings({
+      'tiles': jsonEncode(updated.map((t) => t.toJson()).toList()),
+    });
     emit(state.copyWith(tiles: updated));
   }
 

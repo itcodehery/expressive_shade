@@ -189,6 +189,8 @@ class ShadeStateProvider extends ChangeNotifier {
   }
 
   /// Immediately persists the dirty groups (or everything when [all] is true).
+  void flushSave({bool all = false}) => _flushSave(all: all);
+
   void _flushSave({bool all = false}) {
     _saveTimer?.cancel();
     _saveTimer = null;
@@ -949,6 +951,7 @@ class ShadeStateProvider extends ChangeNotifier {
     if (index != -1) {
       final tile = _tiles[index];
       _tiles[index] = tile.copyWith(isWide: !tile.isWide);
+      _scheduleSave({'tiles'});
       notifyListeners();
     }
   }
@@ -959,6 +962,7 @@ class ShadeStateProvider extends ChangeNotifier {
       final tile = _tiles[index];
       if (tile.isWide != isWide) {
         _tiles[index] = tile.copyWith(isWide: isWide);
+        _scheduleSave({'tiles'});
         notifyListeners();
       }
     }
@@ -972,6 +976,7 @@ class ShadeStateProvider extends ChangeNotifier {
       );
       _tiles[i] = _tiles[i].copyWith(isWide: defaultTile.isWide);
     }
+    _scheduleSave({'tiles'});
     notifyListeners();
   }
 

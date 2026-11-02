@@ -217,7 +217,10 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                               setState(() => _selectedTileId = id),
                           onAddTile: (tile) => state.addTile(tile),
                           onRemoveTile: (id) => state.removeTile(id),
-                          onDone: () => setState(() => _isEditMode = false),
+                          onDone: () {
+                            state.flushSave();
+                            setState(() => _isEditMode = false);
+                          },
                         )
                       : StandardEditTilesView(
                           tiles: state.tiles,
@@ -488,6 +491,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
             ),
             onPressed: () {
               HapticFeedback.lightImpact();
+              state.flushSave();
               setState(() {
                 _isEditMode = false;
                 _selectedTileId = null;
