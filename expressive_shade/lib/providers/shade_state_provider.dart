@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/font_config.dart';
@@ -61,7 +63,7 @@ class ShadeStateProvider extends ChangeNotifier {
   }
 
   Future<void> applyAndSyncToShade() async {
-    _broadcastSettings();
+    _flushSave(all: true);
     notifyListeners();
   }
 
@@ -74,6 +76,16 @@ class ShadeStateProvider extends ChangeNotifier {
       _sliderStyle = (st == 'continuousPill' || st == 'continuous')
           ? SliderStyle.continuousPill
           : SliderStyle.separatedBar;
+    }
+    if (s['themeMode'] != null) {
+      final modeStr = s['themeMode'].toString();
+      if (modeStr == 'light') {
+        _themeMode = ThemeMode.light;
+      } else if (modeStr == 'system') {
+        _themeMode = ThemeMode.system;
+      } else {
+        _themeMode = ThemeMode.dark;
+      }
     }
     if (s['themeSource'] != null) {
       final src = s['themeSource'].toString();
@@ -117,23 +129,87 @@ class ShadeStateProvider extends ChangeNotifier {
         _configureNetworkTiles(nStyle);
       }
     }
+    if (s['tiles'] != null) {
+      try {
+        final dynamic raw = s['tiles'];
+        final List<dynamic> list = (raw is String) ? jsonDecode(raw) : (raw as List);
+        final loadedTiles = list.map((item) => QsTileModel.fromJson(Map<String, dynamic>.from(item as Map))).toList();
+        if (loadedTiles.isNotEmpty) {
+          _tiles.clear();
+          _tiles.addAll(loadedTiles);
+        }
+      } catch (_) {}
+    }
     notifyListeners();
   }
 
-  void _broadcastSettings() {
-    final map = <String, dynamic>{
-      'shadeMode': _shadeMode == ShadeMode.unified ? 'unified' : 'split',
-      'sliderStyle': _sliderStyle == SliderStyle.continuousPill ? 'continuousPill' : 'separatedBar',
-      'themeSource': _themeSource == ThemeSource.system ? 'system' : (_themeSource == ThemeSource.custom ? 'custom' : 'preset'),
-      'selectedPreset': _selectedPreset.id,
-      'customTheme_primaryColor': _customTheme.primaryColor.toARGB32(),
-      'customTheme_isAmoled': _customTheme.isAmoled,
-      'customTheme_cardOpacity': _customTheme.cardOpacity,
-      'customTheme_blurIntensity': _customTheme.blurIntensity,
-      'selectedFont': _selectedFont.id,
-      'networkTileStyle': _networkTileStyle == NetworkTileStyle.unified ? 'unified' : 'separate',
-    };
+  // ---------------------------------------------------------------------------
+  // Debounced, delta-only settings persistence
+  // ---------------------------------------------------------------------------
+  static const Duration _saveDebounce = Duration(milliseconds: 300);
+  final Set<String> _dirtySettings = {};
+  Timer? _saveTimer;
+
+  /// Marks [groups] as changed and writes them once changes settle.
+  void _scheduleSave(Set<String> groups) {
+    _dirtySettings.addAll(groups);
+    _saveTimer?.cancel();
+    _saveTimer = Timer(_saveDebounce, () => _flushSave());
+  }
+
+  /// Immediately persists the dirty groups (or everything when [all] is true).
+  void _flushSave({bool all = false}) {
+    _saveTimer?.cancel();
+    _saveTimer = null;
+    if (all) {
+      _dirtySettings.addAll(const {
+        'shadeMode', 'sliderStyle', 'themeMode', 'themeSource', 'selectedPreset',
+        'customTheme', 'selectedFont', 'networkTileStyle', 'tiles',
+      });
+    }
+    if (_dirtySettings.isEmpty) return;
+    final dirty = Set<String>.of(_dirtySettings);
+    _dirtySettings.clear();
+
+    final map = <String, dynamic>{};
+    if (dirty.contains('shadeMode')) {
+      map['shadeMode'] = _shadeMode == ShadeMode.unified ? 'unified' : 'split';
+    }
+    if (dirty.contains('sliderStyle')) {
+      map['sliderStyle'] = _sliderStyle == SliderStyle.continuousPill ? 'continuousPill' : 'separatedBar';
+    }
+    if (dirty.contains('themeMode')) {
+      map['themeMode'] = _themeMode == ThemeMode.light ? 'light' : (_themeMode == ThemeMode.system ? 'system' : 'dark');
+    }
+    if (dirty.contains('themeSource')) {
+      map['themeSource'] = _themeSource == ThemeSource.system ? 'system' : (_themeSource == ThemeSource.custom ? 'custom' : 'preset');
+    }
+    if (dirty.contains('selectedPreset')) {
+      map['selectedPreset'] = _selectedPreset.id;
+    }
+    if (dirty.contains('customTheme')) {
+      map['customTheme_primaryColor'] = _customTheme.primaryColor.toARGB32();
+      map['customTheme_isAmoled'] = _customTheme.isAmoled;
+      map['customTheme_cardOpacity'] = _customTheme.cardOpacity;
+      map['customTheme_blurIntensity'] = _customTheme.blurIntensity;
+    }
+    if (dirty.contains('selectedFont')) {
+      map['selectedFont'] = _selectedFont.id;
+    }
+    if (dirty.contains('networkTileStyle')) {
+      map['networkTileStyle'] = _networkTileStyle == NetworkTileStyle.unified ? 'unified' : 'separate';
+    }
+    if (dirty.contains('tiles')) {
+      // Only the tiles are re-serialized, and only when they changed.
+      map['tiles'] = jsonEncode(_tiles.map((t) => t.toJson()).toList());
+    }
     SystemSettingsService.saveSettings(map);
+  }
+
+  @override
+  void dispose() {
+    _flushSave();
+    super.dispose();
   }
 
   void _initHardwareSync() {
@@ -159,13 +235,22 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Incremented each time the shade is shown so the UI can reset its scroll position.
+  int _shadeOpenEpoch = 0;
+  int get shadeOpenEpoch => _shadeOpenEpoch;
+
+  void markShadeOpened() {
+    _shadeOpenEpoch++;
+    notifyListeners();
+  }
+
   // Slider Style
   SliderStyle _sliderStyle = SliderStyle.separatedBar;
   SliderStyle get sliderStyle => _sliderStyle;
 
   void setSliderStyle(SliderStyle style) {
     _sliderStyle = style;
-    _broadcastSettings();
+    _scheduleSave({'sliderStyle'});
     notifyListeners();
   }
 
@@ -377,11 +462,15 @@ class ShadeStateProvider extends ChangeNotifier {
   FontConfig _selectedFont = FontConfig.defaultFont;
   FontConfig get selectedFont => _selectedFont;
 
-  // Theme Engine
+  // Theme Engine & Appearance Mode
+  ThemeMode _themeMode = ThemeMode.dark;
+  ThemeMode get themeMode => _themeMode;
+  bool get isDarkMode => _themeMode == ThemeMode.dark;
+
   ThemeSource _themeSource = ThemeSource.preset;
   ThemeSource get themeSource => _themeSource;
 
-  ThemePreset _selectedPreset = ThemePreset.presets.first; // Forest Green (Android 17)
+  ThemePreset _selectedPreset = ThemePreset.presets.firstWhere((p) => p.id == 'forest_green', orElse: () => ThemePreset.presets.first);
   ThemePreset get selectedPreset => _selectedPreset;
 
   CustomThemeData _customTheme = const CustomThemeData();
@@ -406,7 +495,7 @@ class ShadeStateProvider extends ChangeNotifier {
     if (_networkTileStyle != style) {
       _networkTileStyle = style;
       _configureNetworkTiles(style);
-      _broadcastSettings();
+      _scheduleSave({'networkTileStyle', 'tiles'});
       notifyListeners();
     }
   }
@@ -494,6 +583,16 @@ class ShadeStateProvider extends ChangeNotifier {
 
   Future<void> _loadLiveNotifications() async {
     final liveList = await SystemNotificationService.getActiveNotifications();
+    if (_notifications.length == liveList.length) {
+      var unchanged = true;
+      for (var i = 0; i < liveList.length; i++) {
+        if (!_notifications[i].hasSameContentAs(liveList[i])) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return; // nothing visible changed; skip the rebuild
+    }
     _notifications = liveList;
     notifyListeners();
   }
@@ -503,7 +602,7 @@ class ShadeStateProvider extends ChangeNotifier {
   void setShadeMode(ShadeMode mode) {
     _shadeMode = mode;
     _isUnifiedQsExpanded = false;
-    _broadcastSettings();
+    _scheduleSave({'shadeMode'});
     notifyListeners();
   }
 
@@ -514,27 +613,37 @@ class ShadeStateProvider extends ChangeNotifier {
 
   void setFont(FontConfig font) {
     _selectedFont = font;
-    _broadcastSettings();
+    _scheduleSave({'selectedFont'});
     notifyListeners();
+  }
+
+  void setThemeMode(ThemeMode mode) {
+    _themeMode = mode;
+    _scheduleSave({'themeMode'});
+    notifyListeners();
+  }
+
+  void toggleDarkLightMode() {
+    setThemeMode(_themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
   }
 
   void setThemeSource(ThemeSource source) {
     _themeSource = source;
-    _broadcastSettings();
+    _scheduleSave({'themeSource'});
     notifyListeners();
   }
 
   void selectPreset(ThemePreset preset) {
     _selectedPreset = preset;
     _themeSource = ThemeSource.preset;
-    _broadcastSettings();
+    _scheduleSave({'selectedPreset', 'themeSource'});
     notifyListeners();
   }
 
   void updateCustomTheme(CustomThemeData custom) {
     _customTheme = custom;
     _themeSource = ThemeSource.custom;
-    _broadcastSettings();
+    _scheduleSave({'customTheme', 'themeSource'});
     notifyListeners();
   }
 
@@ -560,30 +669,114 @@ class ShadeStateProvider extends ChangeNotifier {
         _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
         SystemHardwareService.setFlashlight(newActive);
       } else if (id == 'wifi') {
+        if (_networkTileStyle == NetworkTileStyle.separate) {
+          _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Connected' : 'Off');
+        }
         SystemHardwareService.toggleWifi();
-      } else if (id == 'mobile_data') {
-        _tiles[index] = tile.copyWith(isActive: newActive);
-        SystemHardwareService.openMobileDataSettings();
       } else if (id == 'bluetooth') {
+        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
         SystemHardwareService.toggleBluetooth();
       } else if (id == 'autorotate') {
+        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
         SystemHardwareService.toggleAutoRotate();
       } else if (id == 'dnd') {
+        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
         SystemHardwareService.toggleDnd();
-      } else if (id == 'airplane') {
-        SystemHardwareService.openAirplaneSettings();
-      } else if (id == 'location') {
-        SystemHardwareService.openLocationSettings();
-      } else if (id == 'battery_saver') {
-        SystemHardwareService.openBatterySaverSettings();
-      } else if (id == 'hotspot') {
-        SystemHardwareService.openHotspotSettings();
-      } else if (id == 'night_light') {
-        SystemHardwareService.openNightLightSettings();
       } else {
-        _tiles[index] = tile.copyWith(isActive: newActive);
+        // Direct in-place toggle for all other settings (battery saver, night light, hotspot, etc.)
+        // AVOID opening external settings app!
+        String? newSubtitle;
+        if (id == 'battery_saver') {
+          newSubtitle = newActive ? 'Active' : 'Off';
+        } else if (id == 'night_light') {
+          newSubtitle = newActive ? 'Warm' : 'Off';
+        } else if (id == 'hotspot') {
+          newSubtitle = newActive ? 'Sharing' : 'Off';
+        } else if (id == 'airplane') {
+          newSubtitle = newActive ? 'On' : 'Off';
+        } else if (id == 'location') {
+          newSubtitle = newActive ? 'Precise' : 'Off';
+        } else if (id == 'dark_theme') {
+          newSubtitle = newActive ? 'Dark' : 'Light';
+        } else if (id == 'data_saver') {
+          newSubtitle = newActive ? 'On' : 'Off';
+        } else if (id == 'vpn') {
+          newSubtitle = newActive ? 'Connected' : 'Disconnected';
+        } else if (id == 'modes') {
+          newSubtitle = newActive ? 'Focus' : 'Normal';
+        } else if (id == 'cast') {
+          newSubtitle = newActive ? 'Streaming' : 'Off';
+        } else if (id == 'extra_dim') {
+          newSubtitle = newActive ? 'Dimmed' : 'Off';
+        } else if (id == 'screen_record') {
+          newSubtitle = newActive ? 'Recording' : 'Record';
+        } else if (id == 'camera_privacy') {
+          newSubtitle = newActive ? 'Blocked' : 'Unblocked';
+        } else if (id == 'mic_privacy') {
+          newSubtitle = newActive ? 'Blocked' : 'Unblocked';
+        } else if (id == 'sensitive_notifs') {
+          newSubtitle = newActive ? 'Visible' : 'Hidden';
+        } else if (id == 'device_controls') {
+          newSubtitle = newActive ? 'Connected' : 'Home';
+        } else if (id == 'one_handed') {
+          newSubtitle = newActive ? 'On' : 'Off';
+        } else if (id == 'talkback') {
+          newSubtitle = newActive ? 'On' : 'Off';
+        } else if (id == 'high_contrast') {
+          newSubtitle = newActive ? 'On' : 'Off';
+        } else if (id == 'magnification') {
+          newSubtitle = newActive ? 'On' : 'Off';
+        } else if (tile.subtitle != null) {
+          newSubtitle = newActive ? 'On' : 'Off';
+        }
+        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newSubtitle);
       }
 
+      _scheduleSave({'tiles'});
+      notifyListeners();
+    }
+  }
+
+  void addTile(QsTileModel tile) {
+    if (!_tiles.any((t) => t.id == tile.id)) {
+      _tiles.add(tile);
+      _scheduleSave({'tiles'});
+      notifyListeners();
+    }
+  }
+
+  void removeTile(String id) {
+    if (_tiles.length > 1) {
+      _tiles.removeWhere((t) => t.id == id);
+      _scheduleSave({'tiles'});
+      notifyListeners();
+    }
+  }
+
+  void resetTiles() {
+    _tiles.clear();
+    _tiles.addAll(QsTileModel.defaultTiles);
+    _configureNetworkTiles(_networkTileStyle);
+    _scheduleSave({'tiles'});
+    notifyListeners();
+  }
+
+  void reorderTile(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _tiles.length) return;
+    if (newIndex < 0 || newIndex >= _tiles.length) return;
+    final tile = _tiles.removeAt(oldIndex);
+    _tiles.insert(newIndex, tile);
+    _scheduleSave({'tiles'});
+    notifyListeners();
+  }
+
+  void moveTile(String fromId, String toId) {
+    final oldIndex = _tiles.indexWhere((t) => t.id == fromId);
+    final newIndex = _tiles.indexWhere((t) => t.id == toId);
+    if (oldIndex != -1 && newIndex != -1 && oldIndex != newIndex) {
+      final tile = _tiles.removeAt(oldIndex);
+      _tiles.insert(newIndex, tile);
+      _scheduleSave({'tiles'});
       notifyListeners();
     }
   }
@@ -650,8 +843,15 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void restoreSampleNotifications() {
-    _notifications = List.from(NotificationModel.sampleNotifications);
+  Future<void> performNotificationAction(NotificationModel n, NotificationAction action, {String? replyText}) async {
+    await SystemNotificationService.performAction(n.id, action.index, replyText: replyText);
+  }
+
+  Future<bool> openNotification(NotificationModel n) => SystemNotificationService.openNotification(n.id);
+
+  void snoozeNotification(String id, {Duration duration = const Duration(hours: 1)}) {
+    _notifications.removeWhere((n) => n.id == id);
+    SystemNotificationService.snoozeNotification(id, duration);
     notifyListeners();
   }
 }

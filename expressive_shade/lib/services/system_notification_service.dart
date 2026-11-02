@@ -15,6 +15,20 @@ class SystemNotificationService {
     });
   }
 
+  /// App icons by package name (null = package has no retrievable icon).
+  static final Map<String, Uint8List?> _iconCache = {};
+
+  static Future<void> _loadIcon(String packageName) async {
+    try {
+      final raw = await _channel.invokeMethod<dynamic>('getAppIcon', {'packageName': packageName});
+      _iconCache[packageName] = raw is Uint8List
+          ? raw
+          : (raw is List ? Uint8List.fromList(raw.cast<int>()) : null);
+    } catch (_) {
+      _iconCache[packageName] = null;
+    }
+  }
+
   static Future<List<NotificationModel>> getActiveNotifications() async {
     try {
       final List<dynamic>? rawList = await _channel.invokeMethod<List<dynamic>>('getNotifications');
@@ -22,8 +36,18 @@ class SystemNotificationService {
         return [];
       }
 
-      return rawList.map((item) {
-        final map = Map<String, dynamic>.from(item as Map);
+      final maps = rawList.map((item) => Map<String, dynamic>.from(item as Map)).toList();
+
+      // Fetch icons only for packages we have not seen yet; they are cached afterwards.
+      final missing = maps
+          .map((m) => m['packageName']?.toString() ?? '')
+          .where((pkg) => pkg.isNotEmpty && !_iconCache.containsKey(pkg))
+          .toSet();
+      if (missing.isNotEmpty) {
+        await Future.wait(missing.map(_loadIcon));
+      }
+
+      return maps.map((map) {
         final id = map['id']?.toString() ?? '';
         final packageName = map['packageName']?.toString() ?? '';
         final appName = map['appName']?.toString() ?? packageName;
@@ -31,7 +55,16 @@ class SystemNotificationService {
         final content = map['content']?.toString() ?? '';
         final timeAgo = map['timestamp']?.toString() ?? 'Now';
         final rawActions = map['actions'] as List<dynamic>? ?? [];
-        final actions = rawActions.map((e) => e.toString()).toList();
+        final actions = rawActions.whereType<Map>().map((e) {
+          final a = Map<String, dynamic>.from(e);
+          return NotificationAction(
+            index: (a['index'] as num?)?.toInt() ?? 0,
+            title: a['title']?.toString() ?? '',
+            hasRemoteInput: a['hasRemoteInput'] == true,
+          );
+        }).toList();
+
+        final Uint8List? appIconBytes = _iconCache[packageName];
 
         final iconAndColor = _resolveAppVisuals(packageName, appName);
 
@@ -43,7 +76,10 @@ class SystemNotificationService {
           timeAgo: timeAgo,
           appIcon: iconAndColor.icon,
           appColor: iconAndColor.color,
+          appIconBytes: appIconBytes,
           actions: actions,
+          canOpen: map['canOpen'] == true,
+          isOngoing: map['isOngoing'] == true,
           isConversation: _isMessagingApp(packageName),
         );
       }).toList();
@@ -56,6 +92,39 @@ class SystemNotificationService {
     try {
       await _channel.invokeMethod('cancelNotification', {'id': id});
     } catch (_) {}
+  }
+
+  static Future<bool> performAction(String id, int index, {String? replyText}) async {
+    try {
+      return await _channel.invokeMethod<bool>('performNotificationAction', {
+            'id': id,
+            'index': index,
+            'replyText': replyText,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> openNotification(String id) async {
+    try {
+      return await _channel.invokeMethod<bool>('openNotification', {'id': id}) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> snoozeNotification(String id, Duration duration) async {
+    try {
+      return await _channel.invokeMethod<bool>('snoozeNotification', {
+            'id': id,
+            'durationMs': duration.inMilliseconds,
+          }) ??
+          false;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<void> cancelAllNotifications() async {

@@ -137,6 +137,12 @@ class SystemHardwareService {
     } catch (_) {}
   }
 
+  static Future<void> openSettings() async {
+    try {
+      await _channel.invokeMethod('openSettings');
+    } catch (_) {}
+  }
+
   static Future<bool> triggerPowerDialog() async {
     try {
       final res = await _channel.invokeMethod<bool>('triggerPowerDialog');

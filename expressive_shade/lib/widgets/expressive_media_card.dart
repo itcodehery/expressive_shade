@@ -61,6 +61,12 @@ class ExpressiveMediaCard extends StatelessWidget {
                   ? Image.memory(
                       artwork!,
                       fit: BoxFit.cover,
+                      // Keep the previous frame while new art decodes (no flicker)
+                      // and decode at the native 256px size instead of full resolution.
+                      gaplessPlayback: true,
+                      cacheWidth: 256,
+                      cacheHeight: 256,
+                      filterQuality: FilterQuality.low,
                     )
                   : const _DefaultAlbumArtBackground(),
             ),
@@ -347,7 +353,7 @@ class SquigglyWaveProgress extends StatefulWidget {
 }
 
 class _SquigglyWaveProgressState extends State<SquigglyWaveProgress>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _waveController;
   late AnimationController _flattenController;
   late Animation<double> _flattenAnimation;
@@ -355,26 +361,39 @@ class _SquigglyWaveProgressState extends State<SquigglyWaveProgress>
   @override
   void initState() {
     super.initState();
-    // Wave moves continuously towards the right when playing
+    // Wave moves continuously towards the right when playing with soft gentle pace
     _waveController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1900),
     );
 
     _flattenController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 160),
       value: widget.isPlaying ? 1.0 : 0.0,
     );
 
     _flattenAnimation = CurvedAnimation(
       parent: _flattenController,
-      curve: Curves.easeOutBack,
-      reverseCurve: Curves.easeInOutCubic,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
     );
 
     if (widget.isPlaying) {
       _waveController.repeat();
+    }
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Stops the endless wave animation while the app/shade is hidden and restarts it on return.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (widget.isPlaying && !_waveController.isAnimating) {
+        _waveController.repeat();
+      }
+    } else {
+      _waveController.stop();
     }
   }
 
@@ -397,6 +416,7 @@ class _SquigglyWaveProgressState extends State<SquigglyWaveProgress>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _waveController.dispose();
     _flattenController.dispose();
     super.dispose();
@@ -476,8 +496,8 @@ class _SquigglyWavePainter extends CustomPainter {
     final centerY = size.height / 2;
     final thumbX = (progress * size.width).clamp(0.0, size.width);
 
-    const wavelength = 18.0;
-    final baseAmplitude = 3.8 * amplitudeFactor;
+    const wavelength = 25.0; // Softer, more elongated wave (was 18.0)
+    final baseAmplitude = 2.4 * amplitudeFactor; // Softer, gentler amplitude (was 3.8)
 
     // 1. Draw Active Wave Segment (from 0 to thumbX)
     if (thumbX > 0) {
@@ -488,21 +508,21 @@ class _SquigglyWavePainter extends CustomPainter {
       const step = 1.0;
       for (double x = 0; x <= thumbX; x += step) {
         double envelope = 1.0;
-        if (x < 8.0) {
-          envelope = x / 8.0;
+        if (x < 12.0) {
+          envelope = (x / 12.0);
         }
-        if (thumbX - x < 8.0) {
-          envelope = math.min(envelope, (thumbX - x) / 8.0);
+        if (thumbX - x < 12.0) {
+          envelope = math.min(envelope, (thumbX - x) / 12.0);
         }
 
-        // Sinusoidal wave moving to the right with phase
+        // Softer sinusoidal wave moving gently to the right
         final y = centerY + math.sin((x / wavelength * 2 * math.pi) - wavePhase) * baseAmplitude * envelope;
         activePath.lineTo(x, y);
       }
 
       final activePaint = Paint()
         ..color = activeColor
-        ..strokeWidth = 3.2
+        ..strokeWidth = 2.6
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
@@ -514,7 +534,7 @@ class _SquigglyWavePainter extends CustomPainter {
     if (thumbX < size.width) {
       final inactivePaint = Paint()
         ..color = inactiveColor
-        ..strokeWidth = 3.0
+        ..strokeWidth = 2.5
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round;
 
@@ -569,8 +589,8 @@ class _PlayPauseSpringButtonState extends State<_PlayPauseSpringButton>
     super.initState();
     _springController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 120),
-      reverseDuration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 70),
+      reverseDuration: const Duration(milliseconds: 140),
     );
 
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.90).animate(

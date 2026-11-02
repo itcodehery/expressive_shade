@@ -19,6 +19,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   late AnimationController _animController;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
+  bool _isDismissing = false;
   static const MethodChannel _overlayChannel = MethodChannel('com.expressive_shade/overlay_activity');
 
   @override
@@ -34,8 +35,8 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 280),
-      reverseDuration: const Duration(milliseconds: 220),
+      duration: const Duration(milliseconds: 170),
+      reverseDuration: const Duration(milliseconds: 140),
     );
 
     _slideAnimation = Tween<Offset>(
@@ -57,23 +58,29 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       if (call.method == 'onPanelTargetChanged' || call.method == 'reloadSettings') {
         final target = call.arguments?.toString();
         if (mounted) {
+          _isDismissing = false;
           final state = context.read<ShadeStateProvider>();
           await state.loadSavedSettings();
           if (target != null && target.isNotEmpty) {
             state.setSplitTabIndex(target == 'notifications' ? 0 : 1);
           }
           state.setUnifiedQsExpanded(false);
-          _animController.forward(from: 0.0);
+          state.markShadeOpened();
+          if (_animController.value < 1.0) {
+            _animController.forward(from: _animController.value == 1.0 ? 0.0 : _animController.value);
+          }
         }
       }
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (mounted) {
+        _isDismissing = false;
         final state = context.read<ShadeStateProvider>();
         await state.loadSavedSettings();
         state.setSplitTabIndex(widget.initialTarget == 'notifications' ? 0 : 1);
         state.setUnifiedQsExpanded(false);
+        state.markShadeOpened();
         _animController.forward(from: 0.0);
       }
     });
@@ -86,8 +93,9 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   }
 
   void _dismissOverlay() {
-    if (_animController.isAnimating) return;
-    _animController.reverse().then((_) {
+    if (_isDismissing) return;
+    _isDismissing = true;
+    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -97,8 +105,9 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   }
 
   void _dismissOverlayAndExecute(VoidCallback action) {
-    if (_animController.isAnimating) return;
-    _animController.reverse().then((_) {
+    if (_isDismissing) return;
+    _isDismissing = true;
+    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -108,17 +117,36 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     });
   }
 
+  void _handleShadeDragUpdate(double deltaDy) {
+    if (_isDismissing) return;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final delta = deltaDy / screenHeight;
+    _animController.value = (_animController.value + delta).clamp(0.0, 1.0);
+  }
+
+  void _handleShadeDragEnd(double velocity) {
+    if (_isDismissing) return;
+    if (velocity < -250 || _animController.value < 0.60) {
+      _dismissOverlay();
+    } else {
+      _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 150));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ShadeStateProvider>();
     final isPlatformDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+    final isDark = state.themeMode == ThemeMode.system
+        ? isPlatformDark
+        : (state.themeMode == ThemeMode.dark);
 
     final themeColors = ExpressiveThemeColors.fromSettings(
       source: state.themeSource,
       preset: state.selectedPreset,
       custom: state.customTheme,
       systemMonetColor: state.systemMonetColor,
-      isSystemDark: isPlatformDark,
+      isDark: isDark,
     );
 
     return PopScope(
@@ -163,61 +191,55 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                 ),
               ),
 
-              // Sliding Shade Canvas
+              // Full-Screen Sliding Shade Canvas (covers top to bottom edge-to-edge)
               SlideTransition(
                 position: _slideAnimation,
                 child: Container(
-                  height: MediaQuery.of(context).size.height * 0.94,
-                  decoration: BoxDecoration(
-                    color: themeColors.background,
-                    borderRadius: const BorderRadius.vertical(
-                      bottom: Radius.circular(32),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.40),
-                        blurRadius: 24,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Column(
+                  width: double.infinity,
+                  height: double.infinity,
+                  color: themeColors.background,
+                  child: Stack(
                     children: [
-                      Expanded(
-                        child: InteractiveShadeCanvas(
-                          colors: themeColors,
-                          onDismissAndExecute: _dismissOverlayAndExecute,
+                      // Full-Height Interactive Shade Canvas extending edge-to-edge seamlessly
+                      Positioned.fill(
+                        child: RepaintBoundary(
+                          child: InteractiveShadeCanvas(
+                            colors: themeColors,
+                            onDismissAndExecute: _dismissOverlayAndExecute,
+                            onDragShadeUpdate: _handleShadeDragUpdate,
+                            onDragShadeEnd: _handleShadeDragEnd,
+                          ),
                         ),
                       ),
-                      // Bottom Grab Handle to drag or pull up
-                      GestureDetector(
-                        onTap: _dismissOverlay,
-                        onVerticalDragUpdate: (details) {
-                          final screenHeight = MediaQuery.of(context).size.height;
-                          final delta = details.delta.dy / screenHeight;
-                          _animController.value = (_animController.value + delta).clamp(0.0, 1.0);
-                        },
-                        onVerticalDragEnd: (details) {
-                          final velocity = details.primaryVelocity ?? 0;
-                          if (velocity < -200 || _animController.value < 0.65) {
-                            _animController.animateTo(0.0, curve: Curves.easeInCubic, duration: const Duration(milliseconds: 220)).then((_) {
-                              _dismissOverlay();
-                            });
-                          } else {
-                            _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 200));
-                          }
-                        },
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          color: Colors.transparent,
-                          child: Center(
-                            child: Container(
-                              width: 36,
-                              height: 4.5,
-                              decoration: BoxDecoration(
-                                color: themeColors.textSecondary.withValues(alpha: 0.35),
-                                borderRadius: BorderRadius.circular(3),
+                      // Bottom Home Drag Handle overlaying content (matches refs/10_android17_caramel_unified_shade_ref.png)
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTap: _dismissOverlay,
+                          onVerticalDragUpdate: (details) {
+                            final screenHeight = MediaQuery.of(context).size.height;
+                            final delta = details.delta.dy / screenHeight;
+                            _handleShadeDragUpdate(delta);
+                          },
+                          onVerticalDragEnd: (details) {
+                            final velocity = details.primaryVelocity ?? 0;
+                            _handleShadeDragEnd(velocity);
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+                            color: Colors.transparent,
+                            child: Center(
+                              child: Container(
+                                width: 72,
+                                height: 4.5,
+                                decoration: BoxDecoration(
+                                  color: themeColors.textSecondary.withValues(alpha: 0.35),
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
                               ),
                             ),
                           ),

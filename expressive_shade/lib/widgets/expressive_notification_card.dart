@@ -9,7 +9,10 @@ class ExpressiveNotificationCard extends StatefulWidget {
   final ExpressiveThemeColors colors;
   final FontConfig font;
   final VoidCallback onDismiss;
-  final ValueChanged<String>? onActionTap;
+  final ValueChanged<NotificationAction>? onActionTap;
+  final void Function(NotificationAction action, String text)? onReply;
+  final VoidCallback? onTap;
+  final VoidCallback? onSnooze;
   final bool isFirstInGroup;
   final bool isLastInGroup;
   final int groupCount;
@@ -21,6 +24,9 @@ class ExpressiveNotificationCard extends StatefulWidget {
     required this.font,
     required this.onDismiss,
     this.onActionTap,
+    this.onReply,
+    this.onTap,
+    this.onSnooze,
     this.isFirstInGroup = true,
     this.isLastInGroup = true,
     this.groupCount = 1,
@@ -32,6 +38,24 @@ class ExpressiveNotificationCard extends StatefulWidget {
 
 class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard> {
   bool _isExpanded = true;
+  NotificationAction? _replyingTo;
+  final TextEditingController _replyController = TextEditingController();
+
+  @override
+  void dispose() {
+    _replyController.dispose();
+    super.dispose();
+  }
+
+  void _sendReply() {
+    final text = _replyController.text.trim();
+    final action = _replyingTo;
+    if (text.isEmpty || action == null) return;
+    HapticFeedback.lightImpact();
+    widget.onReply?.call(action, text);
+    _replyController.clear();
+    setState(() => _replyingTo = null);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +74,7 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
     return Dismissible(
       key: Key(notification.id),
       direction: DismissDirection.horizontal,
-      movementDuration: const Duration(milliseconds: 240),
+      movementDuration: const Duration(milliseconds: 140),
       dismissThresholds: const {
         DismissDirection.startToEnd: 0.32,
         DismissDirection.endToStart: 0.32,
@@ -62,15 +86,12 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
       background: const SizedBox.shrink(),
       secondaryBackground: const SizedBox.shrink(),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 120),
         margin: EdgeInsets.only(bottom: widget.isLastInGroup ? 10 : 3),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: colors.surface,
           borderRadius: borderRadius,
-          border: Border.all(
-            color: colors.textSecondary.withValues(alpha: 0.10),
-          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: colors.isDark ? 0.12 : 0.05),
@@ -90,13 +111,24 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
                 Container(
                   width: 26,
                   height: 26,
+                  clipBehavior: Clip.antiAlias,
                   decoration: BoxDecoration(
                     color: notification.appColor.withValues(alpha: 0.20),
                     shape: BoxShape.circle,
                   ),
-                  child: Center(
-                    child: Icon(notification.appIcon, size: 14, color: notification.appColor),
-                  ),
+                  child: notification.appIconBytes != null
+                      ? Image.memory(
+                          notification.appIconBytes!,
+                          width: 26,
+                          height: 26,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Center(
+                            child: Icon(notification.appIcon, size: 14, color: notification.appColor),
+                          ),
+                        )
+                      : Center(
+                          child: Icon(notification.appIcon, size: 14, color: notification.appColor),
+                        ),
                 ),
                 const SizedBox(width: 8),
 
@@ -190,6 +222,13 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
             ),
             const SizedBox(height: 8),
 
+            // Title + body: tapping opens the source app
+            InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: notification.canOpen && widget.onTap != null ? widget.onTap : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
             // Notification Title / Sender Name (bold, protected against overflow)
             Text(
               notification.title,
@@ -213,45 +252,93 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
               maxLines: _isExpanded ? null : 1,
               overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
             ),
+                ],
+              ),
+            ),
 
-            // Inline Action Pills (e.g. 'Mark as read', 'Reply')
-            if (_isExpanded && notification.actions.isNotEmpty) ...[
+            // Inline Action Pills (e.g. 'Mark as read', 'Reply') plus Snooze
+            if (_isExpanded && (notification.actions.isNotEmpty || widget.onSnooze != null)) ...[
               const SizedBox(height: 10),
               Wrap(
                 spacing: 8,
                 runSpacing: 6,
-                children: notification.actions.map((action) {
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      widget.onActionTap?.call(action);
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: colors.background.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: colors.textSecondary.withValues(alpha: 0.15),
-                        ),
-                      ),
-                      child: Text(
-                        action,
-                        style: font.textStyleBuilder(
-                          fontSize: 12.0,
-                          fontWeight: FontWeight.w600,
-                          color: colors.textPrimary,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                children: [
+                  for (final action in notification.actions)
+                    _buildPill(
+                      action.title,
+                      colors,
+                      font,
+                      () {
+                        HapticFeedback.lightImpact();
+                        if (action.hasRemoteInput && widget.onReply != null) {
+                          setState(() => _replyingTo = _replyingTo == action ? null : action);
+                        } else {
+                          widget.onActionTap?.call(action);
+                        }
+                      },
                     ),
-                  );
-                }).toList(),
+                  if (widget.onSnooze != null)
+                    _buildPill('Snooze', colors, font, () {
+                      HapticFeedback.lightImpact();
+                      widget.onSnooze!();
+                    }),
+                ],
+              ),
+            ],
+
+            // Inline reply field
+            if (_isExpanded && _replyingTo != null) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: _replyController,
+                autofocus: true,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendReply(),
+                style: font.textStyleBuilder(fontSize: 13.0, color: colors.textPrimary),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: _replyingTo!.title,
+                  hintStyle: font.textStyleBuilder(fontSize: 13.0, color: colors.textSecondary),
+                  filled: true,
+                  fillColor: colors.background.withValues(alpha: 0.8),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none,
+                  ),
+                  suffixIcon: IconButton(
+                    icon: Icon(Icons.send_rounded, size: 18, color: colors.activePill),
+                    onPressed: _sendReply,
+                  ),
+                ),
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPill(String label, ExpressiveThemeColors colors, FontConfig font, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: colors.background.withValues(alpha: 0.8),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: colors.textSecondary.withValues(alpha: 0.15)),
+        ),
+        child: Text(
+          label,
+          style: font.textStyleBuilder(
+            fontSize: 12.0,
+            fontWeight: FontWeight.w600,
+            color: colors.textPrimary,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
         ),
       ),
     );

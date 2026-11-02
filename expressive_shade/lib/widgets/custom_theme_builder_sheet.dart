@@ -87,12 +87,16 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
       blurIntensity: _blurIntensity,
     );
 
+    final isDark = state.themeMode == ThemeMode.system
+        ? isSystemDark
+        : (state.themeMode == ThemeMode.dark);
+
     final colors = ExpressiveThemeColors.fromSettings(
       source: ThemeSource.custom,
       preset: state.selectedPreset,
       custom: previewTheme,
       systemMonetColor: state.systemMonetColor,
-      isSystemDark: isSystemDark,
+      isDark: isDark,
     );
 
     final cardGlassBg = (_isAmoled
@@ -256,7 +260,7 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           // 1. Acrylic Quick Settings Row
-                          ClipRRect(
+                          RepaintBoundary(child: ClipRRect(
                             borderRadius: BorderRadius.circular(24),
                             child: BackdropFilter(
                               filter: ImageFilter.blur(
@@ -329,11 +333,11 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                                 ),
                               ),
                             ),
-                          ),
+                          )),
                           const SizedBox(height: 10),
 
                           // 2. Acrylic Notification Card
-                          ClipRRect(
+                          RepaintBoundary(child: ClipRRect(
                             borderRadius: BorderRadius.circular(20),
                             child: BackdropFilter(
                               filter: ImageFilter.blur(
@@ -406,7 +410,7 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                                 ),
                               ),
                             ),
-                          ),
+                          )),
                         ],
                       ),
                     ),

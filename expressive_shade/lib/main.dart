@@ -20,13 +20,16 @@ class ExpressiveShadeApp extends StatelessWidget {
       child: Consumer<ShadeStateProvider>(
         builder: (context, state, _) {
           final isPlatformDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+          final isDark = state.themeMode == ThemeMode.system
+              ? isPlatformDark
+              : (state.themeMode == ThemeMode.dark);
 
           final themeColors = ExpressiveThemeColors.fromSettings(
             source: state.themeSource,
             preset: state.selectedPreset,
             custom: state.customTheme,
             systemMonetColor: state.systemMonetColor,
-            isSystemDark: isPlatformDark,
+            isDark: isDark,
           );
 
           return MaterialApp(

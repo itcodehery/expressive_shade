@@ -1,9 +1,16 @@
 package com.example.expressive_shade
 
 import android.app.Notification
+import android.app.PendingIntent
+import android.app.RemoteInput
+import android.content.Intent
+import android.os.Bundle
 import android.content.ComponentName
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -44,12 +51,59 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
         instance = null
     }
 
+    private val appIconCache = mutableMapOf<String, ByteArray>()
+    private val appLabelCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+    // Only used from the bridge's single notification worker thread.
+    private val timeFormatter = SimpleDateFormat("h:mm a", Locale.getDefault())
+
+    private fun getAppLabel(packageName: String): String {
+        appLabelCache[packageName]?.let { return it }
+        val label = try {
+            val pm = packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+        } catch (e: Exception) {
+            packageName
+        }
+        appLabelCache[packageName] = label
+        return label
+    }
+
+    private fun drawableToPngByteArray(drawable: Drawable, width: Int = 96, height: Int = 96): ByteArray? {
+        return try {
+            val targetW = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth.coerceAtMost(192) else width
+            val targetH = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight.coerceAtMost(192) else height
+            val bitmap = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            val stream = ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.PNG, 90, stream)
+            stream.toByteArray()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    @Synchronized
+    fun getAppIconBytes(packageName: String): ByteArray? {
+        appIconCache[packageName]?.let { return it }
+        return try {
+            val drawable = packageManager.getApplicationIcon(packageName)
+            val bytes = drawableToPngByteArray(drawable, 96, 96)
+            if (bytes != null) {
+                appIconCache[packageName] = bytes
+            }
+            bytes
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     fun getNotificationList(): List<Map<String, Any>> {
         val list = mutableListOf<Map<String, Any>>()
         try {
             val sbns = activeNotifications ?: return list
-            val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
-            val pm = packageManager
+            val timeFormat = timeFormatter
 
             for (sbn in sbns) {
                 val notification = sbn.notification ?: continue
@@ -58,39 +112,90 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
                 if (title.isNullOrBlank() && text.isNullOrBlank()) continue
 
-                val appName = try {
-                    val appInfo = pm.getApplicationInfo(sbn.packageName, 0)
-                    pm.getApplicationLabel(appInfo).toString()
-                } catch (e: Exception) {
-                    sbn.packageName
-                }
+                val appName = getAppLabel(sbn.packageName)
 
-                val actions = mutableListOf<String>()
-                notification.actions?.forEach { action ->
-                    if (!action.title.isNullOrBlank()) {
-                        actions.add(action.title.toString())
+                // Each action keeps its original index so Dart can trigger it later.
+                val actions = mutableListOf<Map<String, Any>>()
+                notification.actions?.forEachIndexed { index, action ->
+                    if (!action.title.isNullOrBlank() && action.actionIntent != null) {
+                        actions.add(
+                            mapOf(
+                                "index" to index,
+                                "title" to action.title.toString(),
+                                "hasRemoteInput" to (action.remoteInputs?.isNotEmpty() == true)
+                            )
+                        )
                     }
                 }
 
                 val timestamp = timeFormat.format(Date(sbn.postTime))
 
-                list.add(
-                    mapOf(
-                        "id" to sbn.key,
-                        "packageName" to sbn.packageName,
-                        "appName" to appName,
-                        "title" to (title ?: ""),
-                        "content" to (text ?: ""),
-                        "timestamp" to timestamp,
-                        "isOngoing" to sbn.isOngoing,
-                        "actions" to actions
-                    )
+                val itemMap = mutableMapOf<String, Any>(
+                    "id" to sbn.key,
+                    "packageName" to sbn.packageName,
+                    "appName" to appName,
+                    "title" to (title ?: ""),
+                    "content" to (text ?: ""),
+                    "timestamp" to timestamp,
+                    "isOngoing" to sbn.isOngoing,
+                    "actions" to actions,
+                    "canOpen" to (notification.contentIntent != null)
                 )
+                list.add(itemMap)
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return list
+    }
+
+    private fun findNotification(key: String): StatusBarNotification? =
+        try { activeNotifications?.firstOrNull { it.key == key } } catch (_: Exception) { null }
+
+    /** Fires a notification action. When [replyText] is set it is delivered through the action's RemoteInput. */
+    fun performNotificationAction(key: String, index: Int, replyText: String?): Boolean {
+        val sbn = findNotification(key) ?: return false
+        val action = sbn.notification.actions?.getOrNull(index) ?: return false
+        val pendingIntent = action.actionIntent ?: return false
+        return try {
+            if (replyText != null) {
+                val remoteInputs = action.remoteInputs ?: return false
+                val fillIn = Intent()
+                val results = Bundle()
+                remoteInputs.forEach { results.putCharSequence(it.resultKey, replyText) }
+                RemoteInput.addResultsToIntent(remoteInputs, fillIn, results)
+                pendingIntent.send(this, 0, fillIn)
+            } else {
+                pendingIntent.send()
+            }
+            true
+        } catch (e: PendingIntent.CanceledException) {
+            false
+        }
+    }
+
+    /** Launches the notification's content intent and clears it when it is auto-cancel. */
+    fun openNotification(key: String): Boolean {
+        val sbn = findNotification(key) ?: return false
+        val intent = sbn.notification.contentIntent ?: return false
+        return try {
+            intent.send()
+            if (sbn.notification.flags and Notification.FLAG_AUTO_CANCEL != 0) {
+                cancelNotification(key)
+            }
+            true
+        } catch (e: PendingIntent.CanceledException) {
+            false
+        }
+    }
+
+    fun snoozeNotificationByKey(key: String, durationMs: Long): Boolean {
+        return try {
+            snoozeNotification(key, durationMs)
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     fun getActiveMediaState(): Map<String, Any>? {

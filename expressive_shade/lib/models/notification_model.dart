@@ -1,4 +1,21 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+
+/// A single actionable button exposed by a notification.
+class NotificationAction {
+  /// Position of the action in the original notification (used to trigger it natively).
+  final int index;
+  final String title;
+
+  /// Whether the action accepts inline text (e.g. Reply).
+  final bool hasRemoteInput;
+
+  const NotificationAction({
+    required this.index,
+    required this.title,
+    this.hasRemoteInput = false,
+  });
+}
 
 class NotificationModel {
   final String id;
@@ -8,7 +25,10 @@ class NotificationModel {
   final String timeAgo;
   final IconData appIcon;
   final Color appColor;
-  final List<String> actions;
+  final Uint8List? appIconBytes;
+  final List<NotificationAction> actions;
+  final bool canOpen;
+  final bool isOngoing;
   final bool isConversation;
   final String? senderAvatar;
 
@@ -20,44 +40,21 @@ class NotificationModel {
     required this.timeAgo,
     required this.appIcon,
     required this.appColor,
+    this.appIconBytes,
     this.actions = const [],
+    this.canOpen = false,
+    this.isOngoing = false,
     this.isConversation = false,
     this.senderAvatar,
   });
 
-  static List<NotificationModel> get sampleNotifications => [
-    const NotificationModel(
-      id: 'notif_1',
-      appName: 'Messages',
-      title: 'Matt',
-      content: 'Hey! Are we still down for meeting up on Saturday? I think Tyler wanted to as well.',
-      timeAgo: 'now',
-      appIcon: Icons.message_rounded,
-      appColor: Color(0xFF1976D2),
-      actions: ['Mark as read', 'Reply'],
-      isConversation: true,
-    ),
-    const NotificationModel(
-      id: 'notif_2',
-      appName: 'Messages',
-      title: 'Rebecca',
-      content: 'Are you coming over? I\'m making a bunch of pasta for dinner tonight!',
-      timeAgo: '5m',
-      appIcon: Icons.message_rounded,
-      appColor: Color(0xFF1976D2),
-      actions: ['Reply'],
-      isConversation: true,
-    ),
-    const NotificationModel(
-      id: 'notif_3',
-      appName: 'Calendar',
-      title: 'Team Standup & M3 Sprint Review',
-      content: 'Starts in 15 minutes in room 4B or Google Meet',
-      timeAgo: '12m',
-      appIcon: Icons.calendar_today_rounded,
-      appColor: Color(0xFF0F9D58),
-      actions: ['Join Call', 'Snooze'],
-      isConversation: false,
-    ),
-  ];
+  /// Cheap value comparison used to skip UI rebuilds when a refresh brought no changes.
+  bool hasSameContentAs(NotificationModel other) =>
+      id == other.id &&
+      title == other.title &&
+      content == other.content &&
+      timeAgo == other.timeAgo &&
+      isOngoing == other.isOngoing &&
+      appIconBytes == other.appIconBytes &&
+      actions.length == other.actions.length;
 }

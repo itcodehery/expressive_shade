@@ -69,8 +69,8 @@ class _ExpressivePillState extends State<ExpressivePill>
     // 1. Primary Bouncy Press Animation (Curves.easeOutBack for expressive overshoot bounce)
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 120),
-      reverseDuration: const Duration(milliseconds: 320),
+      duration: const Duration(milliseconds: 70),
+      reverseDuration: const Duration(milliseconds: 160),
     );
 
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.91).animate(
@@ -84,8 +84,8 @@ class _ExpressivePillState extends State<ExpressivePill>
     // 2. Spatial Neighbor Deflection Animation
     _neighborController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 130),
-      reverseDuration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 70),
+      reverseDuration: const Duration(milliseconds: 140),
     );
 
     _neighborScaleAnimation = Tween<double>(begin: 1.0, end: 0.955).animate(
@@ -127,7 +127,7 @@ class _ExpressivePillState extends State<ExpressivePill>
 
     // Only immediate neighbors (adjacent or diagonal within dist <= 1.5)
     if (dist <= 1.5 && mounted) {
-      final delayMs = (dist * 35).toInt();
+      final delayMs = (dist * 18).toInt();
       Future.delayed(Duration(milliseconds: delayMs), () {
         if (mounted) {
           _neighborController.forward().then((_) {
