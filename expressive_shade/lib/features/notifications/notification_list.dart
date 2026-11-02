@@ -3,6 +3,7 @@ import '../../models/font_config.dart';
 import '../../models/notification_model.dart';
 import '../../theme/m3_expressive_theme.dart';
 import 'notification_card.dart';
+import 'notification_group_card.dart';
 
 class NotificationList extends StatelessWidget {
   final List<NotificationModel> notifications;
@@ -54,26 +55,43 @@ class NotificationList extends StatelessWidget {
       );
     }
 
-    // Group notifications by appName
+    // Group notifications by app / groupKey
     final grouped = <String, List<NotificationModel>>{};
     for (final notif in notifications) {
-      grouped.putIfAbsent(notif.appName, () => []).add(notif);
+      final key = notif.groupKey != null && notif.groupKey!.isNotEmpty
+          ? '${notif.packageName}_${notif.groupKey}'
+          : (notif.packageName.isNotEmpty ? notif.packageName : notif.appName);
+      grouped.putIfAbsent(key, () => []).add(notif);
     }
 
     final children = <Widget>[];
     for (final entry in grouped.entries) {
       final appNotifs = entry.value;
-      for (int i = 0; i < appNotifs.length; i++) {
-        final notif = appNotifs[i];
+      if (appNotifs.length > 1) {
+        children.add(
+          NotificationGroupCard(
+            key: ValueKey('group_${entry.key}'),
+            notifications: appNotifs,
+            colors: colors,
+            font: font,
+            onDismiss: onDismiss,
+            onActionTap: onActionTap,
+            onReply: onReply,
+            onTap: onTap,
+            onSnooze: onSnooze,
+          ),
+        );
+      } else {
+        final notif = appNotifs.first;
         children.add(
           NotificationCard(
             key: ValueKey(notif.id),
             notification: notif,
             colors: colors,
             font: font,
-            isFirstInGroup: i == 0,
-            isLastInGroup: i == appNotifs.length - 1,
-            groupCount: appNotifs.length,
+            isFirstInGroup: true,
+            isLastInGroup: true,
+            groupCount: 1,
             onDismiss: () => onDismiss(notif.id),
             onActionTap: onActionTap != null ? (a) => onActionTap!(notif, a) : null,
             onReply: onReply != null ? (a, text) => onReply!(notif, a, text) : null,

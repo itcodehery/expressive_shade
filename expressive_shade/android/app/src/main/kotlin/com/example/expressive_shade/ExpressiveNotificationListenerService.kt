@@ -162,7 +162,9 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                     "timestamp" to timestamp,
                     "isOngoing" to sbn.isOngoing,
                     "actions" to actions,
-                    "canOpen" to (notification.contentIntent != null)
+                    "canOpen" to (notification.contentIntent != null),
+                    "isGroupSummary" to ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0),
+                    "groupKey" to (sbn.groupKey ?: "")
                 )
                 list.add(itemMap)
             }

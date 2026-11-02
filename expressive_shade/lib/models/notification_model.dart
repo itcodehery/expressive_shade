@@ -32,6 +32,8 @@ class NotificationModel {
   final bool isOngoing;
   final bool isConversation;
   final String? senderAvatar;
+  final bool isGroupSummary;
+  final String? groupKey;
 
   const NotificationModel({
     required this.id,
@@ -48,6 +50,8 @@ class NotificationModel {
     this.isOngoing = false,
     this.isConversation = false,
     this.senderAvatar,
+    this.isGroupSummary = false,
+    this.groupKey,
   });
 
   /// Cheap value comparison used to skip UI rebuilds when a refresh brought no changes.
@@ -57,6 +61,7 @@ class NotificationModel {
       content == other.content &&
       timeAgo == other.timeAgo &&
       isOngoing == other.isOngoing &&
+      isGroupSummary == other.isGroupSummary &&
       appIconBytes == other.appIconBytes &&
       actions.length == other.actions.length;
 }

@@ -67,12 +67,14 @@ class _NotificationCardState extends State<NotificationCard> {
     final font = widget.font;
 
     // Dynamic squircle corners based on app cluster position
-    final BorderRadius borderRadius = BorderRadius.only(
-      topLeft: Radius.circular(widget.isFirstInGroup ? 22 : 8),
-      topRight: Radius.circular(widget.isFirstInGroup ? 22 : 8),
-      bottomLeft: Radius.circular(widget.isLastInGroup ? 22 : 8),
-      bottomRight: Radius.circular(widget.isLastInGroup ? 22 : 8),
-    );
+    final BorderRadius borderRadius = (widget.groupCount <= 1)
+        ? BorderRadius.circular(22)
+        : BorderRadius.only(
+            topLeft: Radius.circular(widget.isFirstInGroup ? 22 : 8),
+            topRight: Radius.circular(widget.isFirstInGroup ? 22 : 8),
+            bottomLeft: Radius.circular(widget.isLastInGroup ? 22 : 8),
+            bottomRight: Radius.circular(widget.isLastInGroup ? 22 : 8),
+          );
 
     if (_isShowingSettings) {
       return NotificationChannelSettingsCard(
@@ -88,7 +90,7 @@ class _NotificationCardState extends State<NotificationCard> {
       key: Key(notification.id),
       colors: colors,
       borderRadius: borderRadius,
-      margin: EdgeInsets.only(bottom: widget.isLastInGroup ? 10 : 3),
+      margin: EdgeInsets.only(bottom: (widget.groupCount <= 1 || widget.isLastInGroup) ? 10 : 3),
       onDismissed: () {
         widget.onDismiss();
       },

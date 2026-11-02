@@ -82,6 +82,8 @@ class SystemNotificationService {
           canOpen: map['canOpen'] == true,
           isOngoing: map['isOngoing'] == true,
           isConversation: _isMessagingApp(packageName),
+          isGroupSummary: map['isGroupSummary'] == true,
+          groupKey: map['groupKey']?.toString(),
         );
       }).toList();
     } catch (_) {
