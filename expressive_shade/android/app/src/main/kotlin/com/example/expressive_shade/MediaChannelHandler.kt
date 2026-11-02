@@ -13,6 +13,11 @@ class MediaChannelHandler : MethodChannel.MethodCallHandler {
                 service?.controlMedia(call.argument<String>("action") ?: "toggle")
                 result.success(true)
             }
+            "seekTo" -> {
+                val position = (call.argument<Double>("position") ?: (call.argument<Number>("position")?.toDouble())) ?: 0.0
+                service?.seekTo(position)
+                result.success(true)
+            }
             else -> result.notImplemented()
         }
     }

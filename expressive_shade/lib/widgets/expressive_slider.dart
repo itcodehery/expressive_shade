@@ -73,55 +73,61 @@ class _ExpressiveSliderState extends State<ExpressiveSlider> {
               scale: _isDragging ? 1.015 : 1.0,
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
-              child: Container(
-                height: widget.height,
-                decoration: BoxDecoration(
-                  color: colors.sliderTrack,
-                  borderRadius: BorderRadius.circular(widget.height / 2),
-                ),
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    // Progress Fill based on Selected Style
-                    if (widget.style == SliderStyle.separatedBar)
-                      _buildSeparatedBarFill(fillWidth, totalWidth, colors)
-                    else
-                      _buildContinuousPillFill(fillWidth, colors),
+              child: widget.style == SliderStyle.matrixCapsule
+                  ? _buildMatrixCapsuleSlider(totalWidth, fillPercent, colors)
+                  : Container(
+                      height: widget.height,
+                      decoration: BoxDecoration(
+                        color: colors.sliderTrack,
+                        borderRadius: BorderRadius.circular(widget.height / 2),
+                      ),
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          // Progress Fill based on Selected Style
+                          if (widget.style == SliderStyle.separatedBar)
+                            _buildSeparatedBarFill(fillWidth, totalWidth, colors)
+                          else
+                            _buildContinuousPillFill(fillWidth, colors),
 
-                    // Leading Icon
-                    Positioned(
-                      left: 18,
-                      top: 0,
-                      bottom: 0,
-                      child: Center(
-                        child: Icon(
-                          widget.leadingIcon,
-                          size: 22,
-                          color: fillPercent > 0.15 ? colors.onActivePill : colors.onInactivePill,
-                        ),
+                          // Leading Icon
+                          Positioned(
+                            left: 18,
+                            top: 0,
+                            bottom: 0,
+                            child: Center(
+                              child: Icon(
+                                widget.leadingIcon,
+                                size: 22,
+                                color: fillPercent > 0.15
+                                    ? colors.onActivePill
+                                    : colors.onInactivePill,
+                              ),
+                            ),
+                          ),
+
+                          // Optional Trailing Action Icon
+                          if (widget.trailingIcon != null)
+                            Positioned(
+                              right: 14,
+                              top: 0,
+                              bottom: 0,
+                              child: Center(
+                                child: IconButton(
+                                  icon: Icon(
+                                    widget.trailingIcon,
+                                    size: 20,
+                                    color: fillPercent > 0.85
+                                        ? colors.onActivePill
+                                        : colors.textSecondary,
+                                  ),
+                                  onPressed: widget.onTrailingTap,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-
-                    // Optional Trailing Action Icon
-                    if (widget.trailingIcon != null)
-                      Positioned(
-                        right: 14,
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: IconButton(
-                            icon: Icon(
-                              widget.trailingIcon,
-                              size: 20,
-                              color: fillPercent > 0.85 ? colors.onActivePill : colors.textSecondary,
-                            ),
-                            onPressed: widget.onTrailingTap,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
             ),
           ),
         );
@@ -193,6 +199,69 @@ class _ExpressiveSliderState extends State<ExpressiveSlider> {
           color: colors.sliderProgress,
           borderRadius: BorderRadius.circular(widget.height / 2),
         ),
+      ),
+    );
+  }
+
+  Widget _buildMatrixCapsuleSlider(
+    double totalWidth,
+    double fillPercent,
+    ExpressiveThemeColors colors,
+  ) {
+    const minPillWidth = 74.0;
+    final pillWidth = minPillWidth + (totalWidth - minPillWidth) * fillPercent;
+
+    return SizedBox(
+      height: widget.height,
+      width: totalWidth,
+      child: Stack(
+        alignment: Alignment.centerLeft,
+        children: [
+          // Thin track line extending all the way
+          Container(
+            height: 4.0,
+            width: totalWidth,
+            decoration: BoxDecoration(
+              color: colors.inactivePill.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          // Pill Capsule on the left
+          AnimatedContainer(
+            duration: _isDragging ? Duration.zero : const Duration(milliseconds: 60),
+            width: pillWidth,
+            height: widget.height,
+            decoration: BoxDecoration(
+              color: colors.activePill,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Center(
+              child: Icon(
+                widget.leadingIcon,
+                size: 22,
+                color: colors.onActivePill,
+              ),
+            ),
+          ),
+          if (widget.trailingIcon != null)
+            Positioned(
+              right: 14,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: IconButton(
+                  icon: Icon(
+                    widget.trailingIcon,
+                    size: 20,
+                    color: fillPercent > 0.85
+                        ? colors.onActivePill
+                        : colors.textSecondary,
+                  ),
+                  onPressed: widget.onTrailingTap,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

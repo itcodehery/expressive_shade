@@ -20,6 +20,7 @@ class NotificationAction {
 class NotificationModel {
   final String id;
   final String appName;
+  final String packageName;
   final String title;
   final String content;
   final String timeAgo;
@@ -35,6 +36,7 @@ class NotificationModel {
   const NotificationModel({
     required this.id,
     required this.appName,
+    this.packageName = '',
     required this.title,
     required this.content,
     required this.timeAgo,

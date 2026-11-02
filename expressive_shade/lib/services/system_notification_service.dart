@@ -71,6 +71,7 @@ class SystemNotificationService {
         return NotificationModel(
           id: id,
           appName: appName,
+          packageName: packageName,
           title: title.isNotEmpty ? title : appName,
           content: content,
           timeAgo: timeAgo,

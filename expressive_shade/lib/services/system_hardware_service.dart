@@ -143,6 +143,20 @@ class SystemHardwareService {
     } catch (_) {}
   }
 
+  static Future<void> openNotificationHistory() async {
+    try {
+      await _channel.invokeMethod('openNotificationHistory');
+    } catch (_) {}
+  }
+
+  static Future<void> openAppNotificationSettings([String? packageName]) async {
+    try {
+      await _channel.invokeMethod('openAppNotificationSettings', {
+        if (packageName != null && packageName.isNotEmpty) 'packageName': packageName,
+      });
+    } catch (_) {}
+  }
+
   static Future<bool> triggerPowerDialog() async {
     try {
       final res = await _channel.invokeMethod<bool>('triggerPowerDialog');

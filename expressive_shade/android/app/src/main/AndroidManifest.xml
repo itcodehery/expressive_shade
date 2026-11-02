@@ -1,6 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Network permission for Google Fonts and dynamic assets in release builds -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Permissions required for replacing the system shade -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

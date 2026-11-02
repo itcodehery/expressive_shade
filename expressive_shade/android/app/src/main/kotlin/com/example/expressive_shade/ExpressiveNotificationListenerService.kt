@@ -108,9 +108,32 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
             for (sbn in sbns) {
                 val notification = sbn.notification ?: continue
                 val extras = notification.extras ?: continue
+
+                // 1. Filter out Media Player notifications (these are displayed in the dedicated Media Player Card)
+                val isMediaCategory = notification.category == Notification.CATEGORY_TRANSPORT
+                val hasMediaSession = extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
+                val template = extras.getString(Notification.EXTRA_TEMPLATE) ?: ""
+                val isMediaTemplate = template.contains("MediaStyle", ignoreCase = true)
+                if (isMediaCategory || hasMediaSession || isMediaTemplate) {
+                    continue
+                }
+
                 val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
                 val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
                 if (title.isNullOrBlank() && text.isNullOrBlank()) continue
+
+                // 2. Filter out Android system notifications about ExpressiveShade overlaying/displaying over other apps
+                val combinedText = "${title ?: ""} ${text ?: ""}"
+                val isOwnPackage = sbn.packageName == packageName
+                val isSystemOverlayAlert = (sbn.packageName == "android" || sbn.packageName == "com.android.systemui" || isOwnPackage) &&
+                        (combinedText.contains("ExpressiveShade", ignoreCase = true) &&
+                         (combinedText.contains("displaying over", ignoreCase = true) ||
+                          combinedText.contains("displayed over", ignoreCase = true) ||
+                          combinedText.contains("drawing over", ignoreCase = true) ||
+                          combinedText.contains("active", ignoreCase = true)))
+                if (isSystemOverlayAlert || (isOwnPackage && sbn.id == 1001)) {
+                    continue
+                }
 
                 val appName = getAppLabel(sbn.packageName)
 
@@ -274,6 +297,23 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 }
                 "next" -> activeController.transportControls.skipToNext()
                 "prev" -> activeController.transportControls.skipToPrevious()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun seekTo(progress: Double) {
+        try {
+            val mediaSessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager ?: return
+            val componentName = ComponentName(this, ExpressiveNotificationListenerService::class.java)
+            val controllers = mediaSessionManager.getActiveSessions(componentName)
+            val activeController = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                ?: controllers.firstOrNull() ?: return
+            val duration = activeController.metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
+            if (duration > 0) {
+                val targetMs = (duration * progress.coerceIn(0.0, 1.0)).toLong()
+                activeController.transportControls.seekTo(targetMs)
             }
         } catch (e: Exception) {
             e.printStackTrace()

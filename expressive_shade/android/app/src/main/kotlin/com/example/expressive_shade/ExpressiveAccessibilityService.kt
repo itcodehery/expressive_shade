@@ -20,7 +20,7 @@ class ExpressiveAccessibilityService : AccessibilityService() {
     companion object {
         var instance: ExpressiveAccessibilityService? = null
             private set
-        var isEnabled = true
+        var isEnabled = false
         var isOverlayShowing = false
     }
 
@@ -32,6 +32,7 @@ class ExpressiveAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        isEnabled = ServicePrefs.isEnabled(this)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         if (isEnabled) {
             setupTopGestureTrigger()
@@ -43,9 +44,9 @@ class ExpressiveAccessibilityService : AccessibilityService() {
             try {
                 removeTopGestureTrigger()
 
+                // Strictly match the physical status bar height with no extra padding below it
                 val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
-                val sbHeight = if (resId > 0) resources.getDimensionPixelSize(resId) else (40 * resources.displayMetrics.density).toInt()
-                val heightPx = sbHeight.coerceAtLeast((48 * resources.displayMetrics.density).toInt()) + (12 * resources.displayMetrics.density).toInt()
+                val heightPx = if (resId > 0) resources.getDimensionPixelSize(resId) else (28 * resources.displayMetrics.density).toInt()
 
                 val params = WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -80,12 +81,15 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                                 startX = event.rawX
                                 startY = event.rawY
                                 isSwipeTriggered = false
-                                true // Must return true to receive subsequent ACTION_MOVE events
+                                // Only consume touches originating strictly inside the status bar
+                                if (startY <= heightPx) true else false
                             }
                             MotionEvent.ACTION_MOVE -> {
                                 val dy = event.rawY - startY
                                 val dx = Math.abs(event.rawX - startX)
-                                if (dy > 20 && dy > dx * 0.7 && !isSwipeTriggered) {
+                                // Require a deliberate downward pull (at least 32dp / 60px) and distinctly vertical
+                                val minSwipeDistance = (32 * resources.displayMetrics.density).toInt().coerceAtLeast(60)
+                                if (dy > minSwipeDistance && dy > dx * 1.5 && !isSwipeTriggered) {
                                     isSwipeTriggered = true
                                     val screenWidth = resources.displayMetrics.widthPixels
                                     val isLeftSwipe = startX < screenWidth / 2
@@ -109,6 +113,9 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                 }
 
                 windowManager?.addView(topTriggerView, params)
+
+                // If accessibility service trigger is active, remove redundant fallback overlay trigger
+                ExpressiveOverlayService.instance?.removeFallbackOverlayTrigger()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -132,33 +139,8 @@ class ExpressiveAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (!isEnabled || event == null || isOverlayShowing) return
-
-        val eventType = event.eventType
-        if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val pkg = event.packageName?.toString() ?: ""
-            val cls = event.className?.toString() ?: ""
-
-            // Fallback catch: when SystemUI expands a window (like notification shade or quick settings)
-            if (pkg.contains("systemui", ignoreCase = true)) {
-                val isExcluded = cls.contains("Volume", ignoreCase = true) ||
-                        cls.contains("Screenshot", ignoreCase = true) ||
-                        cls.contains("Toast", ignoreCase = true) ||
-                        cls.contains("Power", ignoreCase = true) ||
-                        cls.contains("GlobalActions", ignoreCase = true) ||
-                        cls.contains("Biometric", ignoreCase = true) ||
-                        cls.contains("Fingerprint", ignoreCase = true)
-
-                if (!isExcluded) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastTriggerTime > 800) {
-                        lastTriggerTime = now
-                        performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
-                        deployCustomShade("notifications")
-                    }
-                }
-            }
-        }
+        // No-op: Status bar pull-down is handled strictly by the status bar touch trigger view.
+        // Catching general SystemUI window state changes caused false triggers when scrolling in other apps.
     }
 
     fun deployCustomShade(target: String) {

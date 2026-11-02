@@ -58,22 +58,23 @@ class ExpressivePill extends StatefulWidget {
 class _ExpressivePillState extends State<ExpressivePill>
     with TickerProviderStateMixin {
   late AnimationController _animController;
-  late Animation<double> _scaleAnimation;
+  late Animation<double> _pressHeightAnim;
+  late Animation<double> _pressWidthAnim;
   late AnimationController _neighborController;
-  late Animation<double> _neighborScaleAnimation;
-  double _dragAccumulator = 0.0;
+  late Animation<double> _neighborHeightAnim;
+  late Animation<double> _neighborWidthAnim;
 
   @override
   void initState() {
     super.initState();
-    // 1. Primary Bouncy Press Animation (Curves.easeOutBack for expressive overshoot bounce)
+    // 1. Primary Bouncy Press Animation (Curves.easeOutBack for expressive spring bounce)
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 70),
-      reverseDuration: const Duration(milliseconds: 160),
+      duration: const Duration(milliseconds: 80),
+      reverseDuration: const Duration(milliseconds: 280),
     );
 
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.91).animate(
+    _pressHeightAnim = Tween<double>(begin: 0.0, end: 7.0).animate(
       CurvedAnimation(
         parent: _animController,
         curve: Curves.easeInQuad,
@@ -81,14 +82,30 @@ class _ExpressivePillState extends State<ExpressivePill>
       ),
     );
 
-    // 2. Spatial Neighbor Deflection Animation
-    _neighborController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 70),
-      reverseDuration: const Duration(milliseconds: 140),
+    _pressWidthAnim = Tween<double>(begin: 0.0, end: 8.0).animate(
+      CurvedAnimation(
+        parent: _animController,
+        curve: Curves.easeInQuad,
+        reverseCurve: Curves.easeOutBack,
+      ),
     );
 
-    _neighborScaleAnimation = Tween<double>(begin: 1.0, end: 0.955).animate(
+    // 2. Spatial Neighbor Deflection Animation (Width & Height morphing spring wave)
+    _neighborController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 90),
+      reverseDuration: const Duration(milliseconds: 320),
+    );
+
+    _neighborHeightAnim = Tween<double>(begin: 0.0, end: 4.5).animate(
+      CurvedAnimation(
+        parent: _neighborController,
+        curve: Curves.easeOutQuad,
+        reverseCurve: Curves.easeOutBack,
+      ),
+    );
+
+    _neighborWidthAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
       CurvedAnimation(
         parent: _neighborController,
         curve: Curves.easeOutQuad,
@@ -172,12 +189,30 @@ class _ExpressivePillState extends State<ExpressivePill>
     final fgColor = tile.isActive ? colors.onActivePill : colors.onInactivePill;
 
     final tileWidget = AnimatedBuilder(
-      animation: Listenable.merge([_scaleAnimation, _neighborScaleAnimation]),
+      animation: Listenable.merge([
+        _pressHeightAnim,
+        _pressWidthAnim,
+        _neighborHeightAnim,
+        _neighborWidthAnim,
+      ]),
       builder: (context, child) {
-        final totalScale = _scaleAnimation.value * _neighborScaleAnimation.value;
-        return Transform.scale(
-          scale: totalScale,
-          child: child,
+        final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
+        final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
+        final currentHeight = (68.0 - hSquish).clamp(44.0, 68.0);
+
+        return SizedBox(
+          height: 68.0,
+          child: Center(
+            child: SizedBox(
+              height: currentHeight,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: (wSquish / 2).clamp(0.0, 8.0),
+                ),
+                child: child,
+              ),
+            ),
+          ),
         );
       },
       child: GestureDetector(
@@ -195,53 +230,43 @@ class _ExpressivePillState extends State<ExpressivePill>
       return tileWidget;
     }
 
-    // When selected in Edit Mode: render with prominent white border and attached draggable resize handle
+    // When selected in Edit Mode: render with prominent white border and attached single-tap chevron toggle button
     return Stack(
       clipBehavior: Clip.none,
       children: [
         tileWidget,
-        // Attached vertical draggable resize handle pill on right edge
+        // Attached single-tap chevron resize toggle on right edge
         Positioned(
-          right: -10,
+          right: -12,
           top: 0,
           bottom: 0,
           child: Center(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onVerticalDragStart: (_) {
-                _dragAccumulator = 0.0;
-                HapticFeedback.selectionClick();
-              },
-              onVerticalDragUpdate: (details) {
-                _dragAccumulator += details.delta.dy;
-                if (_dragAccumulator.abs() > 32) {
-                  HapticFeedback.mediumImpact();
-                  widget.onResizeTap?.call();
-                  _dragAccumulator = 0.0;
-                }
-              },
               onTap: () {
-                HapticFeedback.lightImpact();
+                HapticFeedback.mediumImpact();
                 widget.onResizeTap?.call();
               },
               child: Container(
-                width: 18,
+                width: 26,
                 height: 36,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(9),
+                  borderRadius: BorderRadius.circular(12),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 5,
-                      offset: const Offset(0, 1),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
-                child: const Center(
+                child: Center(
                   child: Icon(
-                    Icons.drag_indicator_rounded,
-                    size: 15,
+                    widget.tile.isWide
+                        ? Icons.chevron_left_rounded
+                        : Icons.chevron_right_rounded,
+                    size: 20,
                     color: Colors.black87,
                   ),
                 ),
@@ -263,7 +288,7 @@ class _ExpressivePillState extends State<ExpressivePill>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       curve: Curves.fastOutSlowIn,
-      height: 68,
+      height: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: bgColor,
@@ -295,15 +320,11 @@ class _ExpressivePillState extends State<ExpressivePill>
                 color: tile.isActive
                     ? fgColor.withValues(alpha: 0.20)
                     : Colors.white.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(16), // More squared off than outer capsule
+                borderRadius: BorderRadius.circular(
+                  16,
+                ), // More squared off than outer capsule
               ),
-              child: Center(
-                child: Icon(
-                  tile.icon,
-                  size: 22,
-                  color: fgColor,
-                ),
-              ),
+              child: Center(child: Icon(tile.icon, size: 22, color: fgColor)),
             ),
           ),
           const SizedBox(width: 10),
@@ -410,7 +431,7 @@ class _ExpressivePillState extends State<ExpressivePill>
     return AnimatedContainer(
       duration: const Duration(milliseconds: 260),
       curve: Curves.fastOutSlowIn,
-      height: 68,
+      height: double.infinity,
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(24),
@@ -418,13 +439,7 @@ class _ExpressivePillState extends State<ExpressivePill>
             ? Border.all(color: Colors.white, width: 2.2)
             : Border.all(color: Colors.transparent, width: 2.2),
       ),
-      child: Center(
-        child: Icon(
-          tile.icon,
-          size: 26,
-          color: fgColor,
-        ),
-      ),
+      child: Center(child: Icon(tile.icon, size: 26, color: fgColor)),
     );
   }
 }

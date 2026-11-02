@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../models/font_config.dart';
 import '../models/notification_model.dart';
 import '../theme/m3_expressive_theme.dart';
+import 'notification_channel_settings_card.dart';
+import 'springy_dismissible_notification.dart';
 
 class ExpressiveNotificationCard extends StatefulWidget {
   final NotificationModel notification;
@@ -38,6 +40,7 @@ class ExpressiveNotificationCard extends StatefulWidget {
 
 class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard> {
   bool _isExpanded = true;
+  bool _isShowingSettings = false;
   NotificationAction? _replyingTo;
   final TextEditingController _replyController = TextEditingController();
 
@@ -71,35 +74,45 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
       bottomRight: Radius.circular(widget.isLastInGroup ? 22 : 8),
     );
 
-    return Dismissible(
+    if (_isShowingSettings) {
+      return NotificationChannelSettingsCard(
+        notification: notification,
+        colors: colors,
+        font: font,
+        borderRadius: borderRadius,
+        onClose: () => setState(() => _isShowingSettings = false),
+      );
+    }
+
+    return SpringyDismissibleNotification(
       key: Key(notification.id),
-      direction: DismissDirection.horizontal,
-      movementDuration: const Duration(milliseconds: 140),
-      dismissThresholds: const {
-        DismissDirection.startToEnd: 0.32,
-        DismissDirection.endToStart: 0.32,
-      },
-      onDismissed: (_) {
-        HapticFeedback.mediumImpact();
+      colors: colors,
+      borderRadius: borderRadius,
+      margin: EdgeInsets.only(bottom: widget.isLastInGroup ? 10 : 3),
+      onDismissed: () {
         widget.onDismiss();
       },
-      background: const SizedBox.shrink(),
-      secondaryBackground: const SizedBox.shrink(),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        margin: EdgeInsets.only(bottom: widget.isLastInGroup ? 10 : 3),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: colors.surface,
-          borderRadius: borderRadius,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: colors.isDark ? 0.12 : 0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: () {
+          HapticFeedback.heavyImpact();
+          setState(() => _isShowingSettings = true);
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: colors.surface,
+            borderRadius: borderRadius,
+            boxShadow: [
+              BoxShadow(
+                color:
+                    Colors.black.withValues(alpha: colors.isDark ? 0.12 : 0.05),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -316,8 +329,9 @@ class _ExpressiveNotificationCardState extends State<ExpressiveNotificationCard>
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildPill(String label, ExpressiveThemeColors colors, FontConfig font, VoidCallback onTap) {
     return InkWell(

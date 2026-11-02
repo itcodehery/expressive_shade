@@ -65,6 +65,33 @@ class HardwareChannelHandler(
                 { Intent(Settings.ACTION_BLUETOOTH_SETTINGS) }
             )
             "openSettings" -> open(result, { Intent(Settings.ACTION_SETTINGS) })
+            "openNotificationHistory" -> open(
+                result,
+                { Intent("android.settings.NOTIFICATION_HISTORY") },
+                { Intent("android.settings.ALL_APPS_NOTIFICATION_SETTINGS") },
+                { Intent(Settings.ACTION_SETTINGS) }
+            )
+            "openAppNotificationSettings" -> {
+                val pkg = call.argument<String>("packageName")
+                if (!pkg.isNullOrEmpty()) {
+                    open(
+                        result,
+                        {
+                            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                                putExtra(Settings.EXTRA_APP_PACKAGE, pkg)
+                            }
+                        },
+                        { Intent("android.settings.ALL_APPS_NOTIFICATION_SETTINGS") },
+                        { Intent(Settings.ACTION_SETTINGS) }
+                    )
+                } else {
+                    open(
+                        result,
+                        { Intent("android.settings.ALL_APPS_NOTIFICATION_SETTINGS") },
+                        { Intent(Settings.ACTION_SETTINGS) }
+                    )
+                }
+            }
             "triggerPowerDialog" -> result.success(globalAction(AccessibilityService.GLOBAL_ACTION_POWER_DIALOG, 0))
             "triggerLockdown" -> result.success(
                 globalAction(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, Build.VERSION_CODES.P)

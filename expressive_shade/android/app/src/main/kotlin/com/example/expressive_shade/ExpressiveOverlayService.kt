@@ -41,6 +41,11 @@ class ExpressiveOverlayService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (!ServicePrefs.isEnabled(this)) {
+            // Restarted by the system (START_STICKY) while the user has the service switched off.
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this, 0, notificationIntent,
@@ -82,14 +87,31 @@ class ExpressiveOverlayService : Service() {
         }
     }
 
+    fun removeFallbackOverlayTrigger() {
+        try {
+            if (topTriggerView != null && windowManager != null) {
+                windowManager?.removeView(topTriggerView)
+                topTriggerView = null
+            }
+        } catch (_: Exception) {}
+    }
+
     private fun setupFallbackOverlayTrigger() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
             return
         }
 
+        // If the accessibility service trigger is active, do not create a duplicate overlay trigger
+        if (ExpressiveAccessibilityService.instance != null && ExpressiveAccessibilityService.isEnabled) {
+            removeFallbackOverlayTrigger()
+            return
+        }
+
         if (topTriggerView != null) return
 
-        val heightPx = (46 * resources.displayMetrics.density).toInt()
+        // Strictly match the status bar height
+        val resId = resources.getIdentifier("status_bar_height", "dimen", "android")
+        val heightPx = if (resId > 0) resources.getDimensionPixelSize(resId) else (28 * resources.displayMetrics.density).toInt()
         val layoutType = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -130,12 +152,14 @@ class ExpressiveOverlayService : Service() {
                         startX = event.rawX
                         startY = event.rawY
                         isSwipeHandled = false
-                        true
+                        // Only consume touches originating strictly inside the status bar
+                        if (startY <= heightPx) true else false
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val dy = event.rawY - startY
                         val dx = Math.abs(event.rawX - startX)
-                        if (dy > 20 && dy > dx * 0.7 && !isSwipeHandled) {
+                        val minSwipeDistance = (32 * resources.displayMetrics.density).toInt().coerceAtLeast(60)
+                        if (dy > minSwipeDistance && dy > dx * 1.5 && !isSwipeHandled) {
                             isSwipeHandled = true
                             val screenWidth = resources.displayMetrics.widthPixels
                             val isLeftSwipe = startX < screenWidth / 2
@@ -206,12 +230,7 @@ class ExpressiveOverlayService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (topTriggerView != null && windowManager != null) {
-            try {
-                windowManager?.removeView(topTriggerView)
-            } catch (_: Exception) {}
-            topTriggerView = null
-        }
+        removeFallbackOverlayTrigger()
         isRunning = false
         instance = null
     }

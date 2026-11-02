@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/font_config.dart';
+import '../models/media_player_style.dart';
 import '../models/notification_model.dart';
 import '../models/qs_tile_model.dart';
 import '../models/shade_mode.dart';
@@ -16,7 +17,9 @@ import '../services/system_permissions_service.dart';
 import '../services/system_settings_service.dart';
 
 class ShadeStateProvider extends ChangeNotifier {
-  static const MethodChannel _overlayEventsChannel = MethodChannel('com.expressive_shade/overlay_events');
+  static const MethodChannel _overlayEventsChannel = MethodChannel(
+    'com.expressive_shade/overlay_events',
+  );
 
   ShadeStateProvider() {
     _loadSystemMonetColor();
@@ -69,13 +72,30 @@ class ShadeStateProvider extends ChangeNotifier {
 
   void _applySettings(Map<String, dynamic> s) {
     if (s['shadeMode'] != null) {
-      _shadeMode = (s['shadeMode'].toString() == 'unified') ? ShadeMode.unified : ShadeMode.split;
+      final modeStr = s['shadeMode'].toString();
+      if (modeStr == 'unified') {
+        _shadeMode = ShadeMode.unified;
+      } else if (modeStr == 'smart' || modeStr == 'brutalist' || modeStr == 'nothing') {
+        _shadeMode = ShadeMode.smart;
+      } else {
+        _shadeMode = ShadeMode.split;
+      }
     }
     if (s['sliderStyle'] != null) {
       final st = s['sliderStyle'].toString();
-      _sliderStyle = (st == 'continuousPill' || st == 'continuous')
-          ? SliderStyle.continuousPill
-          : SliderStyle.separatedBar;
+      _sliderStyle = SliderStyle.values.firstWhere(
+        (e) => e.name == st,
+        orElse: () => (st == 'continuousPill' || st == 'continuous')
+            ? SliderStyle.continuousPill
+            : SliderStyle.separatedBar,
+      );
+    }
+    if (s['mediaPlayerStyle'] != null) {
+      final ms = s['mediaPlayerStyle'].toString();
+      _mediaPlayerStyle = MediaPlayerStyle.values.firstWhere(
+        (e) => e.name == ms,
+        orElse: () => MediaPlayerStyle.expressiveWave,
+      );
     }
     if (s['themeMode'] != null) {
       final modeStr = s['themeMode'].toString();
@@ -100,7 +120,10 @@ class ShadeStateProvider extends ChangeNotifier {
     if (s['selectedPreset'] != null) {
       final pId = s['selectedPreset'].toString();
       _selectedPreset = ThemePreset.presets.firstWhere(
-        (p) => p.id == pId || p.name == pId || p.name.toLowerCase().replaceAll(' ', '_') == pId,
+        (p) =>
+            p.id == pId ||
+            p.name == pId ||
+            p.name.toLowerCase().replaceAll(' ', '_') == pId,
         orElse: () => _selectedPreset,
       );
     }
@@ -110,7 +133,8 @@ class ShadeStateProvider extends ChangeNotifier {
         primaryColor: Color(colorVal),
         isAmoled: s['customTheme_isAmoled'] == true,
         cardOpacity: (s['customTheme_cardOpacity'] as num?)?.toDouble() ?? 0.95,
-        blurIntensity: (s['customTheme_blurIntensity'] as num?)?.toDouble() ?? 20.0,
+        blurIntensity:
+            (s['customTheme_blurIntensity'] as num?)?.toDouble() ?? 20.0,
       );
     }
     if (s['selectedFont'] != null) {
@@ -132,8 +156,15 @@ class ShadeStateProvider extends ChangeNotifier {
     if (s['tiles'] != null) {
       try {
         final dynamic raw = s['tiles'];
-        final List<dynamic> list = (raw is String) ? jsonDecode(raw) : (raw as List);
-        final loadedTiles = list.map((item) => QsTileModel.fromJson(Map<String, dynamic>.from(item as Map))).toList();
+        final List<dynamic> list = (raw is String)
+            ? jsonDecode(raw)
+            : (raw as List);
+        final loadedTiles = list
+            .map(
+              (item) =>
+                  QsTileModel.fromJson(Map<String, dynamic>.from(item as Map)),
+            )
+            .toList();
         if (loadedTiles.isNotEmpty) {
           _tiles.clear();
           _tiles.addAll(loadedTiles);
@@ -163,8 +194,16 @@ class ShadeStateProvider extends ChangeNotifier {
     _saveTimer = null;
     if (all) {
       _dirtySettings.addAll(const {
-        'shadeMode', 'sliderStyle', 'themeMode', 'themeSource', 'selectedPreset',
-        'customTheme', 'selectedFont', 'networkTileStyle', 'tiles',
+        'shadeMode',
+        'sliderStyle',
+        'mediaPlayerStyle',
+        'themeMode',
+        'themeSource',
+        'selectedPreset',
+        'customTheme',
+        'selectedFont',
+        'networkTileStyle',
+        'tiles',
       });
     }
     if (_dirtySettings.isEmpty) return;
@@ -173,16 +212,25 @@ class ShadeStateProvider extends ChangeNotifier {
 
     final map = <String, dynamic>{};
     if (dirty.contains('shadeMode')) {
-      map['shadeMode'] = _shadeMode == ShadeMode.unified ? 'unified' : 'split';
+      map['shadeMode'] = _shadeMode == ShadeMode.unified
+          ? 'unified'
+          : (_shadeMode == ShadeMode.smart ? 'smart' : 'split');
     }
     if (dirty.contains('sliderStyle')) {
-      map['sliderStyle'] = _sliderStyle == SliderStyle.continuousPill ? 'continuousPill' : 'separatedBar';
+      map['sliderStyle'] = _sliderStyle.name;
+    }
+    if (dirty.contains('mediaPlayerStyle')) {
+      map['mediaPlayerStyle'] = _mediaPlayerStyle.name;
     }
     if (dirty.contains('themeMode')) {
-      map['themeMode'] = _themeMode == ThemeMode.light ? 'light' : (_themeMode == ThemeMode.system ? 'system' : 'dark');
+      map['themeMode'] = _themeMode == ThemeMode.light
+          ? 'light'
+          : (_themeMode == ThemeMode.system ? 'system' : 'dark');
     }
     if (dirty.contains('themeSource')) {
-      map['themeSource'] = _themeSource == ThemeSource.system ? 'system' : (_themeSource == ThemeSource.custom ? 'custom' : 'preset');
+      map['themeSource'] = _themeSource == ThemeSource.system
+          ? 'system'
+          : (_themeSource == ThemeSource.custom ? 'custom' : 'preset');
     }
     if (dirty.contains('selectedPreset')) {
       map['selectedPreset'] = _selectedPreset.id;
@@ -197,7 +245,9 @@ class ShadeStateProvider extends ChangeNotifier {
       map['selectedFont'] = _selectedFont.id;
     }
     if (dirty.contains('networkTileStyle')) {
-      map['networkTileStyle'] = _networkTileStyle == NetworkTileStyle.unified ? 'unified' : 'separate';
+      map['networkTileStyle'] = _networkTileStyle == NetworkTileStyle.unified
+          ? 'unified'
+          : 'separate';
     }
     if (dirty.contains('tiles')) {
       // Only the tiles are re-serialized, and only when they changed.
@@ -254,6 +304,16 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Media Player Style
+  MediaPlayerStyle _mediaPlayerStyle = MediaPlayerStyle.expressiveWave;
+  MediaPlayerStyle get mediaPlayerStyle => _mediaPlayerStyle;
+
+  void setMediaPlayerStyle(MediaPlayerStyle style) {
+    _mediaPlayerStyle = style;
+    _scheduleSave({'mediaPlayerStyle'});
+    notifyListeners();
+  }
+
   // System Permissions
   Map<String, bool> _permissions = {
     'overlay': false,
@@ -267,17 +327,15 @@ class ShadeStateProvider extends ChangeNotifier {
   bool get isServiceEnabled => _isServiceEnabled;
 
   bool get areCorePermissionsGranted =>
-      (_permissions['overlay'] ?? false) && (_permissions['accessibility'] ?? false);
+      (_permissions['overlay'] ?? false) &&
+      (_permissions['accessibility'] ?? false);
 
   Future<void> refreshPermissions() async {
     _permissions = await SystemPermissionsService.checkPermissions();
     if (!areCorePermissionsGranted) {
       _isServiceEnabled = false;
     } else {
-      final running = await SystemPermissionsService.isServiceRunning();
-      if (running) {
-        _isServiceEnabled = true;
-      }
+      _isServiceEnabled = await SystemPermissionsService.isServiceRunning();
     }
     if (_permissions['notification'] == true) {
       _loadLiveNotifications();
@@ -333,11 +391,16 @@ class ShadeStateProvider extends ChangeNotifier {
       final enabled = wifi['enabled'] == true;
       final connected = wifi['connected'] == true;
       final ssid = (wifi['ssid'] ?? (enabled ? 'Wi-Fi' : 'Off')).toString();
-      _updateTile('wifi', (t) => t.copyWith(
-        isActive: enabled,
-        title: connected ? ssid : 'Internet',
-        subtitle: connected ? 'Connected' : (enabled ? 'Not connected' : 'Off'),
-      ));
+      _updateTile(
+        'wifi',
+        (t) => t.copyWith(
+          isActive: enabled,
+          title: connected ? ssid : 'Internet',
+          subtitle: connected
+              ? 'Connected'
+              : (enabled ? 'Not connected' : 'Off'),
+        ),
+      );
     }
 
     // 2. Bluetooth
@@ -346,64 +409,67 @@ class ShadeStateProvider extends ChangeNotifier {
       final enabled = bt['enabled'] == true;
       final connected = bt['connected'] == true;
       final name = (bt['name'] ?? (enabled ? 'On' : 'Off')).toString();
-      _updateTile('bluetooth', (t) => t.copyWith(
-        isActive: enabled,
-        subtitle: connected ? name : (enabled ? 'On' : 'Off'),
-      ));
+      _updateTile(
+        'bluetooth',
+        (t) => t.copyWith(
+          isActive: enabled,
+          subtitle: connected ? name : (enabled ? 'On' : 'Off'),
+        ),
+      );
     }
 
     // 3. Flashlight
     if (hw['flashlight'] is bool) {
       final on = hw['flashlight'] as bool;
-      _updateTile('flashlight', (t) => t.copyWith(
-        isActive: on,
-        subtitle: on ? 'On' : 'Off',
-      ));
+      _updateTile(
+        'flashlight',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
     }
 
     // 4. Auto-rotate
     if (hw['autoRotate'] is bool) {
       final on = hw['autoRotate'] as bool;
-      _updateTile('autorotate', (t) => t.copyWith(
-        isActive: on,
-        subtitle: on ? 'On' : 'Off',
-      ));
+      _updateTile(
+        'autorotate',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
     }
 
     // 5. Do Not Disturb
     if (hw['dnd'] is bool) {
       final on = hw['dnd'] as bool;
-      _updateTile('dnd', (t) => t.copyWith(
-        isActive: on,
-        subtitle: on ? 'On' : 'Off',
-      ));
+      _updateTile(
+        'dnd',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
     }
 
     // 6. Airplane Mode
     if (hw['airplane'] is bool) {
       final on = hw['airplane'] as bool;
-      _updateTile('airplane', (t) => t.copyWith(
-        isActive: on,
-        subtitle: on ? 'On' : 'Off',
-      ));
+      _updateTile(
+        'airplane',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
     }
 
     // 7. Location (GPS)
     if (hw['location'] is bool) {
       final on = hw['location'] as bool;
-      _updateTile('location', (t) => t.copyWith(
-        isActive: on,
-        subtitle: on ? 'On' : 'Off',
-      ));
+      _updateTile(
+        'location',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
     }
 
     // 8. Battery Saver
     if (hw['batterySaver'] is bool) {
       final on = hw['batterySaver'] as bool;
-      _updateTile('battery_saver', (t) => t.copyWith(
-        isActive: on,
-        subtitle: on ? 'On' : 'Off',
-      ));
+      _updateTile(
+        'battery_saver',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
     }
 
     // 9. Brightness & Volume
@@ -435,7 +501,8 @@ class ShadeStateProvider extends ChangeNotifier {
   }
 
   // Shade Mode (Split vs Unified)
-  ShadeMode _shadeMode = ShadeMode.unified; // Default to Android 17 Unified Shade
+  ShadeMode _shadeMode =
+      ShadeMode.unified; // Default to Android 17 Unified Shade
   ShadeMode get shadeMode => _shadeMode;
 
   // Split Panel Tab (0: Notifications, 1: Quick Settings)
@@ -470,7 +537,10 @@ class ShadeStateProvider extends ChangeNotifier {
   ThemeSource _themeSource = ThemeSource.preset;
   ThemeSource get themeSource => _themeSource;
 
-  ThemePreset _selectedPreset = ThemePreset.presets.firstWhere((p) => p.id == 'forest_green', orElse: () => ThemePreset.presets.first);
+  ThemePreset _selectedPreset = ThemePreset.presets.firstWhere(
+    (p) => p.id == 'forest_green',
+    orElse: () => ThemePreset.presets.first,
+  );
   ThemePreset get selectedPreset => _selectedPreset;
 
   CustomThemeData _customTheme = const CustomThemeData();
@@ -593,7 +663,17 @@ class ShadeStateProvider extends ChangeNotifier {
       }
       if (unchanged) return; // nothing visible changed; skip the rebuild
     }
-    _notifications = liveList;
+    // Secondary guardrail: never show media notifications or own overlay service notifications
+    _notifications = liveList.where((n) {
+      final text = '${n.title} ${n.content}'.toLowerCase();
+      final isOverlayAlert =
+          text.contains('expressiveshade') &&
+          (text.contains('displaying over') ||
+              text.contains('displayed over') ||
+              text.contains('drawing over') ||
+              text.contains('active'));
+      return !isOverlayAlert;
+    }).toList();
     notifyListeners();
   }
 
@@ -624,7 +704,9 @@ class ShadeStateProvider extends ChangeNotifier {
   }
 
   void toggleDarkLightMode() {
-    setThemeMode(_themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark);
+    setThemeMode(
+      _themeMode == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark,
+    );
   }
 
   void setThemeSource(ThemeSource source) {
@@ -666,21 +748,36 @@ class ShadeStateProvider extends ChangeNotifier {
       final newActive = !tile.isActive;
 
       if (id == 'flashlight') {
-        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
         SystemHardwareService.setFlashlight(newActive);
       } else if (id == 'wifi') {
         if (_networkTileStyle == NetworkTileStyle.separate) {
-          _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Connected' : 'Off');
+          _tiles[index] = tile.copyWith(
+            isActive: newActive,
+            subtitle: newActive ? 'Connected' : 'Off',
+          );
         }
         SystemHardwareService.toggleWifi();
       } else if (id == 'bluetooth') {
-        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
         SystemHardwareService.toggleBluetooth();
       } else if (id == 'autorotate') {
-        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
         SystemHardwareService.toggleAutoRotate();
       } else if (id == 'dnd') {
-        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'On' : 'Off',
+        );
         SystemHardwareService.toggleDnd();
       } else {
         // Direct in-place toggle for all other settings (battery saver, night light, hotspot, etc.)
@@ -729,7 +826,10 @@ class ShadeStateProvider extends ChangeNotifier {
         } else if (tile.subtitle != null) {
           newSubtitle = newActive ? 'On' : 'Off';
         }
-        _tiles[index] = tile.copyWith(isActive: newActive, subtitle: newSubtitle);
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newSubtitle,
+        );
       }
 
       _scheduleSave({'tiles'});
@@ -797,12 +897,50 @@ class ShadeStateProvider extends ChangeNotifier {
 
   void setMediaProgress(double val) {
     _mediaProgress = val.clamp(0.0, 1.0);
+    SystemMediaService.seekTo(_mediaProgress);
     notifyListeners();
   }
 
   void dismissNotification(String id) {
     _notifications.removeWhere((n) => n.id == id);
     SystemNotificationService.cancelNotification(id);
+    notifyListeners();
+  }
+
+  void dismissAllForApp(String appName) {
+    final toRemove =
+        _notifications.where((n) => n.appName == appName).toList();
+    for (final notif in toRemove) {
+      _notifications.remove(notif);
+      SystemNotificationService.cancelNotification(notif.id);
+    }
+    notifyListeners();
+  }
+
+  final Set<String> _silentApps = {};
+  final Set<String> _silentNotificationIds = {};
+
+  bool isNotificationSilent(NotificationModel notif) {
+    return _silentNotificationIds.contains(notif.id) ||
+        _silentApps.contains(notif.appName) ||
+        (notif.packageName.isNotEmpty &&
+            _silentApps.contains(notif.packageName));
+  }
+
+  void setNotificationSilent(NotificationModel notif, bool silent) {
+    if (silent) {
+      _silentNotificationIds.add(notif.id);
+      _silentApps.add(notif.appName);
+      if (notif.packageName.isNotEmpty) {
+        _silentApps.add(notif.packageName);
+      }
+    } else {
+      _silentNotificationIds.remove(notif.id);
+      _silentApps.remove(notif.appName);
+      if (notif.packageName.isNotEmpty) {
+        _silentApps.remove(notif.packageName);
+      }
+    }
     notifyListeners();
   }
 
@@ -843,13 +981,25 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> performNotificationAction(NotificationModel n, NotificationAction action, {String? replyText}) async {
-    await SystemNotificationService.performAction(n.id, action.index, replyText: replyText);
+  Future<void> performNotificationAction(
+    NotificationModel n,
+    NotificationAction action, {
+    String? replyText,
+  }) async {
+    await SystemNotificationService.performAction(
+      n.id,
+      action.index,
+      replyText: replyText,
+    );
   }
 
-  Future<bool> openNotification(NotificationModel n) => SystemNotificationService.openNotification(n.id);
+  Future<bool> openNotification(NotificationModel n) =>
+      SystemNotificationService.openNotification(n.id);
 
-  void snoozeNotification(String id, {Duration duration = const Duration(hours: 1)}) {
+  void snoozeNotification(
+    String id, {
+    Duration duration = const Duration(hours: 1),
+  }) {
     _notifications.removeWhere((n) => n.id == id);
     SystemNotificationService.snoozeNotification(id, duration);
     notifyListeners();

@@ -5,6 +5,9 @@ enum SliderStyle {
 
   /// Active fill with a distinct separated vertical line indicator at the thumb position.
   separatedBar,
+
+  /// Sliding capsule thumb over a minimal thin track (Compact Matrix style).
+  matrixCapsule,
 }
 
 extension SliderStyleExtension on SliderStyle {
@@ -14,6 +17,8 @@ extension SliderStyleExtension on SliderStyle {
         return 'Continuous Pill';
       case SliderStyle.separatedBar:
         return 'Separated Bar Indicator';
+      case SliderStyle.matrixCapsule:
+        return 'Matrix Capsule';
     }
   }
 
@@ -23,6 +28,8 @@ extension SliderStyleExtension on SliderStyle {
         return 'Seamless smooth capsule fill';
       case SliderStyle.separatedBar:
         return 'Tactile fill with separated vertical line indicator';
+      case SliderStyle.matrixCapsule:
+        return 'Sliding pill capsule over a minimal thin track';
     }
   }
 }

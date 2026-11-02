@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -16,6 +17,10 @@ import 'expressive_notification_card.dart';
 import 'expressive_pill.dart';
 import 'expressive_power_menu_dialog.dart';
 import 'expressive_slider.dart';
+import 'notification_channel_settings_card.dart';
+import 'springy_dismissible_notification.dart';
+
+enum _DragAction { none, expandingQs, collapsingQs, dismissingShade, ignored }
 
 class InteractiveShadeCanvas extends StatefulWidget {
   final ExpressiveThemeColors colors;
@@ -43,9 +48,10 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       ValueNotifier<TileImpulse?>(null);
   late AnimationController _qsBouncyController;
   late Animation<double> _bouncyCurveAnimation;
-  bool _isDraggingQs = false;
   bool _isEditMode = false;
+  bool _isSmartUnorganized = false;
   String? _selectedTileId;
+  String? _smartSettingsNotifId;
   int _lastOpenEpoch = 0;
 
   /// True while the user scrolls or drags the shade; the backdrop blur is softened
@@ -53,9 +59,11 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
   final ValueNotifier<bool> _reduceBlur = ValueNotifier<bool>(false);
 
   // Notifications Upward Drag-to-Close Tracker
+  double _notifPointerStartX = 0.0;
   double _notifPointerStartY = 0.0;
   double _notifLastPointerY = 0.0;
-  bool _isDraggingShadeUp = false;
+  bool _dragStartExpanded = false;
+  _DragAction _activeDragAction = _DragAction.none;
   VelocityTracker? _notifVelocityTracker;
 
   void _handleTileAction(VoidCallback action) {
@@ -104,6 +112,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     _lastOpenEpoch = openEpoch;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      context.read<ShadeStateProvider>().setUnifiedQsExpanded(false);
+      _qsBouncyController.value = 0.0;
       if (_unifiedScrollController.hasClients) {
         _unifiedScrollController.jumpTo(0.0);
       }
@@ -131,14 +141,14 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     final colors = widget.colors;
     _handleShadeOpened(openEpoch, isSplit);
 
-    if (!_isDraggingQs) {
+    if (_activeDragAction == _DragAction.none) {
       if (isExpanded &&
           _qsBouncyController.status != AnimationStatus.forward &&
           _qsBouncyController.value < 1.0) {
         _qsBouncyController.animateTo(
           1.0,
           curve: Curves.easeOutCubic,
-          duration: const Duration(milliseconds: 320),
+          duration: const Duration(milliseconds: 260),
         );
       } else if (!isExpanded &&
           _qsBouncyController.status != AnimationStatus.reverse &&
@@ -146,46 +156,76 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
         _qsBouncyController.animateTo(
           0.0,
           curve: Curves.easeInCubic,
-          duration: const Duration(milliseconds: 260),
+          duration: const Duration(milliseconds: 220),
         );
       }
     }
 
-    return Container(
-      color: colors.background,
-      child: SafeArea(
-        top: false, // Render behind and over the status bar completely
-        bottom: true,
-        child: Column(
-          children: [
-            // Status Bar & System Header (renders directly over physical status bar)
-            Consumer<ShadeStateProvider>(
-              builder: (context, state, _) => _buildStatusBar(state, colors),
-            ),
+    final mainContent = Consumer<ShadeStateProvider>(
+      builder: (context, state, _) {
+        final showStandardHeader = state.shadeMode != ShadeMode.smart;
 
-            // Secondary Quick Actions Header or Edit Tiles Header
-            Consumer<ShadeStateProvider>(
-              builder: (context, state, _) => _isEditMode
-                  ? _buildEditHeaderControls(state, colors)
-                  : _buildHeaderControls(state, colors),
-            ),
+        return Container(
+          color: state.shadeMode == ShadeMode.smart && !_isEditMode
+              ? Colors.transparent
+              : colors.background,
+          child: SafeArea(
+            top: false, // Render behind and over the status bar completely
+            bottom: true,
+            child: Column(
+              children: [
+                if (showStandardHeader) ...[
+                  // Status Bar & System Header (renders directly over physical status bar)
+                  _buildStatusBar(state, colors),
 
-            const SizedBox(height: 6),
+                  // Secondary Quick Actions Header or Edit Tiles Header
+                  if (_isEditMode) ...[
+                    _buildEditHeaderControls(state, colors),
+                    const SizedBox(height: 6),
+                  ] else if (state.shadeMode == ShadeMode.unified) ...[
+                    ClipRect(
+                      child: SizeTransition(
+                        sizeFactor: _bouncyCurveAnimation,
+                        alignment: Alignment.topCenter,
+                        child: FadeTransition(
+                          opacity: _bouncyCurveAnimation,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildHeaderControls(state, colors),
+                              const SizedBox(height: 6),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ] else ...[
+                    _buildHeaderControls(state, colors),
+                    const SizedBox(height: 6),
+                  ],
+                ],
 
-            // Main Canvas: Dual Mode Engine (Split vs Unified) or Edit Tiles View
-            Expanded(
-              child: Consumer<ShadeStateProvider>(
-                builder: (context, state, _) => _isEditMode
-                    ? _buildEditTilesView(state, colors)
-                    : (state.shadeMode == ShadeMode.split
-                          ? _buildSplitModeView(state, colors)
-                          : _buildUnifiedShadeView(state, colors)),
-              ),
+                // Main Canvas: Dual Mode Engine (Split vs Smart vs Unified) or Edit Tiles View
+                Expanded(
+                  child: _isEditMode
+                      ? (state.shadeMode == ShadeMode.smart
+                          ? _buildSmartEditTilesView(state, colors)
+                          : _buildEditTilesView(state, colors))
+                      : switch (state.shadeMode) {
+                          ShadeMode.split => _buildSplitModeView(state, colors),
+                          ShadeMode.smart => _buildSmartView(state, colors),
+                          ShadeMode.unified =>
+                            _buildUnifiedShadeView(state, colors),
+                        },
+                ),
+              ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
+
+    return _wrapWithNotificationsDragToClose(mainContent);
   }
 
   Widget _buildStatusBar(
@@ -689,6 +729,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           artwork: state.mediaArtwork,
           colors: colors,
           font: state.selectedFont,
+          style: state.mediaPlayerStyle,
           onPlayPause: () => state.togglePlayPause(),
           onSkipNext: () => state.skipNextMedia(),
           onSkipPrevious: () => state.skipPreviousMedia(),
@@ -703,21 +744,130 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     ShadeStateProvider state,
     ExpressiveThemeColors colors,
   ) {
-    return _buildDynamicTilesGridCustom(
+    return _buildPaginatedTilesGrid(
       state,
       colors,
       _packTilesIntoRows(state.tiles),
     );
   }
 
-  Widget _buildDynamicTilesGridCustom(
+  Widget _buildPaginatedTilesGrid(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    List<List<QsTileModel>> rows, {
+    int maxRowsPerPage = 5,
+    double rowHeight = 68.0,
+    double rowSpacing = 12.0,
+  }) {
+    if (rows.length <= maxRowsPerPage) {
+      return _buildTilesGridPage(state, colors, rows, 0);
+    }
+
+    // Chunk rows into pages of up to maxRowsPerPage rows each
+    final List<List<List<QsTileModel>>> pages = [];
+    for (int i = 0; i < rows.length; i += maxRowsPerPage) {
+      final end = (i + maxRowsPerPage < rows.length)
+          ? i + maxRowsPerPage
+          : rows.length;
+      pages.add(rows.sublist(i, end));
+    }
+
+    final double fixedHeight =
+        (maxRowsPerPage * rowHeight) + ((maxRowsPerPage - 1) * rowSpacing);
+
+    return _PaginatedTilesContainer(
+      colors: colors,
+      pages: pages,
+      fixedHeight: fixedHeight,
+      builder: (context, pageIndex) {
+        return _buildTilesGridPage(
+          state,
+          colors,
+          pages[pageIndex],
+          pageIndex * maxRowsPerPage,
+        );
+      },
+    );
+  }
+
+  Widget _buildUnifiedPaginatedTilesGrid(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    List<List<QsTileModel>> allRows, {
+    int maxRowsPerPage = 5,
+  }) {
+    if (allRows.isEmpty) return const SizedBox.shrink();
+
+    // Chunk all rows into unified pages of up to 5 rows each
+    final List<List<List<QsTileModel>>> pages = [];
+    for (int i = 0; i < allRows.length; i += maxRowsPerPage) {
+      final end = (i + maxRowsPerPage < allRows.length)
+          ? i + maxRowsPerPage
+          : allRows.length;
+      pages.add(allRows.sublist(i, end));
+    }
+
+    return _UnifiedPaginatedTilesContainer(
+      colors: colors,
+      pages: pages,
+      bouncyAnimation: _bouncyCurveAnimation,
+      builder: (context, pageIndex) {
+        final pageRows = pages[pageIndex];
+        final topTwo = pageRows.take(2).toList();
+        final rest = pageRows.skip(2).toList();
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Always visible top 2 rows of this page
+            _buildTilesGridPage(
+              state,
+              colors,
+              topTwo,
+              pageIndex * maxRowsPerPage,
+            ),
+
+            // Expandable remaining rows of this page
+            if (rest.isNotEmpty) ...[
+              ClipRect(
+                child: SizeTransition(
+                  sizeFactor: _bouncyCurveAnimation,
+                  alignment: Alignment.topCenter,
+                  child: FadeTransition(
+                    opacity: _bouncyCurveAnimation,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(height: 12),
+                        _buildTilesGridPage(
+                          state,
+                          colors,
+                          rest,
+                          pageIndex * maxRowsPerPage + 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildTilesGridPage(
     ShadeStateProvider state,
     ExpressiveThemeColors colors,
     List<List<QsTileModel>> rows,
+    int baseRowIndex,
   ) {
     final font = state.selectedFont;
 
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         for (int r = 0; r < rows.length; r++) ...[
           if (r > 0) const SizedBox(height: 12),
@@ -732,7 +882,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                     state: state,
                     colors: colors,
                     font: font,
-                    row: r,
+                    row: baseRowIndex + r,
                     col: t,
                   ),
                 ),
@@ -768,9 +918,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
               tile.id == 'bluetooth' ||
               tile.id == 'mobile_data')
           ? () {
-              _handleTileAction(() {
-                state.toggleTile(tile.id);
-              });
+              state.toggleTile(tile.id);
             }
           : null,
       onOuterPillTap:
@@ -799,9 +947,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
         if (_isEditMode) {
           setState(() => _selectedTileId = tile.id);
         } else {
-          _handleTileAction(() {
-            state.toggleTile(tile.id);
-          });
+          state.toggleTile(tile.id);
         }
       },
       onLongPress: () {
@@ -894,10 +1040,6 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
   }
 
   Widget _wrapWithNotificationsDragToClose(Widget child) {
-    if (widget.onDragShadeUpdate == null) {
-      return child;
-    }
-
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
@@ -905,45 +1047,169 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           PointerDeviceKind.touch,
         );
         _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
+        _notifPointerStartX = event.position.dx;
         _notifPointerStartY = event.position.dy;
         _notifLastPointerY = event.position.dy;
-        _isDraggingShadeUp = false;
+        _activeDragAction = _DragAction.none;
+        final state = context.read<ShadeStateProvider>();
+        _dragStartExpanded =
+            state.isUnifiedQsExpanded || _qsBouncyController.value > 0.5;
       },
       onPointerMove: (event) {
         _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
         final currentY = event.position.dy;
+        final currentX = event.position.dx;
         final deltaY = currentY - _notifLastPointerY;
         _notifLastPointerY = currentY;
-        final totalDelta = currentY - _notifPointerStartY;
+        final totalDeltaX = currentX - _notifPointerStartX;
+        final totalDeltaY = currentY - _notifPointerStartY;
 
-        final isAtScrollTop =
-            !_unifiedScrollController.hasClients ||
-            _unifiedScrollController.offset <= 2.0;
+        // In edit mode or if gesture already determined to be horizontal, skip
+        if (_isEditMode || _activeDragAction == _DragAction.ignored) return;
 
-        // Trigger upward drag-to-close only when list is at the top or already dragging upwards
-        if ((isAtScrollTop && totalDelta < -20.0) || _isDraggingShadeUp) {
-          _isDraggingShadeUp = true;
+        final state = context.read<ShadeStateProvider>();
+        final isUnifiedOrMatrix =
+            state.shadeMode == ShadeMode.unified ||
+            state.shadeMode == ShadeMode.smart;
+
+        // Check if user has scrolled down into the notifications
+        final isScrolledDown = _unifiedScrollController.hasClients &&
+            _unifiedScrollController.offset > 8.0;
+
+        // Lock in the active drag action once touch slop threshold is passed
+        if (_activeDragAction == _DragAction.none) {
+          // If movement is predominantly horizontal (e.g. dismissing a notification or paging tiles), ignore
+          if (totalDeltaX.abs() > 10.0 && totalDeltaX.abs() > totalDeltaY.abs()) {
+            _activeDragAction = _DragAction.ignored;
+            return;
+          }
+
+          // Only trigger vertical drag actions if vertical movement dominates horizontal movement
+          if (totalDeltaY.abs() > 14.0 && totalDeltaY.abs() > totalDeltaX.abs() * 1.3) {
+            if (isUnifiedOrMatrix) {
+              if (_dragStartExpanded) {
+                // State 2: Expanded Quick Settings
+                // Swiping up anywhere from expanded QS collapses back to normal shade (Rule 3)
+                if (totalDeltaY < -14.0 && !isScrolledDown) {
+                  _activeDragAction = _DragAction.collapsingQs;
+                }
+              } else {
+                // State 1: Normal Shade (2 rows of QS + notifications)
+                // Swiping down anywhere from normal shade expands the shade (Rule 2)
+                if (totalDeltaY > 14.0 && !isScrolledDown) {
+                  _activeDragAction = _DragAction.expandingQs;
+                }
+                // Swiping up anywhere from normal shade collapses the whole shade (Rule 4)
+                else if (totalDeltaY < -16.0 && !isScrolledDown) {
+                  _activeDragAction = _DragAction.dismissingShade;
+                }
+              }
+            } else {
+              // Split mode: upward swipe when at top dismisses the shade
+              if (totalDeltaY < -18.0 && !isScrolledDown) {
+                _activeDragAction = _DragAction.dismissingShade;
+              }
+            }
+          }
+        }
+
+        // Lock scroll view during active gesture drag so content doesn't bounce/jitter
+        if (_activeDragAction != _DragAction.none &&
+            _activeDragAction != _DragAction.ignored) {
+          if (_unifiedScrollController.hasClients &&
+              _unifiedScrollController.offset != 0.0) {
+            _unifiedScrollController.jumpTo(0.0);
+          }
+        }
+
+        // Execute continuous real-time movement for the active action
+        if (_activeDragAction == _DragAction.expandingQs ||
+            _activeDragAction == _DragAction.collapsingQs) {
+          final progressDelta = deltaY / 220.0;
+          _qsBouncyController.value =
+              (_qsBouncyController.value + progressDelta).clamp(0.0, 1.0);
+        } else if (_activeDragAction == _DragAction.dismissingShade) {
           _reduceBlur.value = true;
           widget.onDragShadeUpdate?.call(deltaY);
         }
       },
       onPointerUp: (event) {
         _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
-        if (_isDraggingShadeUp) {
-          _isDraggingShadeUp = false;
+        final velocity =
+            _notifVelocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
+        final state = context.read<ShadeStateProvider>();
+
+        if (_activeDragAction == _DragAction.expandingQs) {
+          // Rule 2: Swiping down from normal shade expands the shade
+          if (velocity > 120 || _qsBouncyController.value > 0.30) {
+            HapticFeedback.lightImpact();
+            _qsBouncyController.animateTo(
+              1.0,
+              curve: Curves.easeOutCubic,
+              duration: const Duration(milliseconds: 220),
+            );
+            state.setUnifiedQsExpanded(true);
+          } else {
+            HapticFeedback.lightImpact();
+            _qsBouncyController.animateTo(
+              0.0,
+              curve: Curves.easeInCubic,
+              duration: const Duration(milliseconds: 180),
+            );
+            state.setUnifiedQsExpanded(false);
+          }
+        } else if (_activeDragAction == _DragAction.collapsingQs) {
+          // Rule 3: Swiping up anywhere from expanded QS collapses back to normal shade
+          if (velocity < -120 || _qsBouncyController.value < 0.70) {
+            HapticFeedback.lightImpact();
+            _qsBouncyController.animateTo(
+              0.0,
+              curve: Curves.easeInCubic,
+              duration: const Duration(milliseconds: 200),
+            );
+            state.setUnifiedQsExpanded(false);
+          } else {
+            HapticFeedback.lightImpact();
+            _qsBouncyController.animateTo(
+              1.0,
+              curve: Curves.easeOutCubic,
+              duration: const Duration(milliseconds: 200),
+            );
+            state.setUnifiedQsExpanded(true);
+          }
+        } else if (_activeDragAction == _DragAction.dismissingShade) {
+          // Rule 4: Swiping up from normal shade collapses whole shade
           _reduceBlur.value = false;
-          final velocity =
-              _notifVelocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
           widget.onDragShadeEnd?.call(velocity);
         }
+
+        _activeDragAction = _DragAction.none;
         _notifVelocityTracker = null;
       },
       onPointerCancel: (_) {
-        if (_isDraggingShadeUp) {
-          _isDraggingShadeUp = false;
+        if (_activeDragAction == _DragAction.dismissingShade) {
           _reduceBlur.value = false;
           widget.onDragShadeEnd?.call(0.0);
+        } else if (_activeDragAction == _DragAction.expandingQs) {
+          final state = context.read<ShadeStateProvider>();
+          if (_qsBouncyController.value > 0.30) {
+            _qsBouncyController.animateTo(1.0, curve: Curves.easeOutCubic);
+            state.setUnifiedQsExpanded(true);
+          } else {
+            _qsBouncyController.animateTo(0.0, curve: Curves.easeInCubic);
+            state.setUnifiedQsExpanded(false);
+          }
+        } else if (_activeDragAction == _DragAction.collapsingQs) {
+          final state = context.read<ShadeStateProvider>();
+          if (_qsBouncyController.value < 0.70) {
+            _qsBouncyController.animateTo(0.0, curve: Curves.easeInCubic);
+            state.setUnifiedQsExpanded(false);
+          } else {
+            _qsBouncyController.animateTo(1.0, curve: Curves.easeOutCubic);
+            state.setUnifiedQsExpanded(true);
+          }
         }
+        _activeDragAction = _DragAction.none;
         _notifVelocityTracker = null;
       },
       child: child,
@@ -959,11 +1225,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     return ListView(
       key: ValueKey('notif_panel_${state.shadeOpenEpoch}'),
       padding: EdgeInsets.zero,
-      children: [
-        _wrapWithNotificationsDragToClose(
-          _buildNotificationsContainer(state, colors, font),
-        ),
-      ],
+      children: [_buildNotificationsContainer(state, colors, font)],
     );
   }
 
@@ -973,127 +1235,1243 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
   // Quick Settings expansion animates in a bouncy spring manner (Curves.easeOutBack).
   // Brightness and Volume sliders are only visible when expanded.
   // Expand chip is removed in favor of downward swipe gesture.
+
+  // ===========================================================================
+  // 3. COMPACT MATRIX SHADE MODE (3-Column Matrix, Capsule Slider, Categorized Alerts)
+  // ===========================================================================
+  Widget _buildSmartView(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+  ) {
+    final font = state.selectedFont;
+    final blurSigma = state.customTheme.blurIntensity.clamp(4.0, 24.0);
+    final cardOpacity = state.customTheme.cardOpacity.clamp(0.1, 1.0);
+    final bgAlpha = (cardOpacity * 0.45).clamp(0.15, 0.65);
+
+    final rows3 = _packTilesInto3ColRows(state.tiles);
+    final topTwoRows = rows3.take(2).toList();
+    final remainingRows = rows3.skip(2).toList();
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        child: Container(
+          decoration: BoxDecoration(
+            color: colors.background.withValues(alpha: bgAlpha),
+            gradient: RadialGradient(
+              center: const Alignment(0.0, -0.3),
+              radius: 1.3,
+              colors: [
+                colors.activePill.withValues(alpha: 0.15),
+                colors.background.withValues(alpha: bgAlpha * 0.7),
+                colors.background.withValues(alpha: bgAlpha),
+              ],
+              stops: const [0.0, 0.55, 1.0],
+            ),
+          ),
+          child: ListView(
+            controller: _unifiedScrollController,
+            physics: const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            children: [
+                // Top Header: Chips for Time/Date and Battery
+                _buildSmartHeader(state, colors, font),
+                const SizedBox(height: 12),
+
+                // Quick Settings Matrix Section:
+                // - Brightness slider ONLY appears when expanded (animates above the tiles)
+                // - First 2 rows (6 tiles) always visible
+                // - Remaining rows smoothly slide down and fade in below the top 2 rows
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Brightness Slider: ONLY appears when Quick Settings is expanded
+                    ClipRect(
+                      child: SizeTransition(
+                        sizeFactor: _bouncyCurveAnimation,
+                        alignment: Alignment.topCenter,
+                        child: FadeTransition(
+                          opacity: _bouncyCurveAnimation,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildSmartBrightnessSlider(state, colors),
+                              const SizedBox(height: 12),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Top 2 rows (always visible)
+                    _buildSmartTilesRowsPage(topTwoRows, state, colors),
+
+                    // Animated expandable section: Smooth Slide-down & Fade-in for remaining rows
+                    if (remainingRows.isNotEmpty) ...[
+                      ClipRect(
+                        child: SizeTransition(
+                          sizeFactor: _bouncyCurveAnimation,
+                          alignment: Alignment.topCenter,
+                          child: FadeTransition(
+                            opacity: _bouncyCurveAnimation,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const SizedBox(height: 12),
+                                _buildSmartTilesRowsPage(
+                                  remainingRows,
+                                  state,
+                                  colors,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+
+                  // Drag Handle / Tap to Expand or Contract (with smooth animation)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      if (state.isUnifiedQsExpanded ||
+                          _qsBouncyController.value > 0.5) {
+                        _qsBouncyController.animateTo(
+                          0.0,
+                          curve: Curves.easeInCubic,
+                          duration: const Duration(milliseconds: 200),
+                        );
+                        state.setUnifiedQsExpanded(false);
+                      } else {
+                        _qsBouncyController.animateTo(
+                          1.0,
+                          curve: Curves.easeOutCubic,
+                          duration: const Duration(milliseconds: 240),
+                        );
+                        state.setUnifiedQsExpanded(true);
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Center(
+                        child: AnimatedBuilder(
+                          animation: _bouncyCurveAnimation,
+                          builder: (context, _) {
+                            final isExpanded = _qsBouncyController.value > 0.5;
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: colors.activePill.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 34,
+                                    height: 3.5,
+                                    decoration: BoxDecoration(
+                                      color: colors.activePill
+                                          .withValues(alpha: 0.7),
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    isExpanded
+                                        ? Icons.keyboard_arrow_up_rounded
+                                        : Icons.keyboard_arrow_down_rounded,
+                                    size: 16,
+                                    color: colors.activePill,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Categorized Notifications
+              _buildSmartNotifications(state, colors, font),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartHeader(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    final now = DateTime.now();
+    final hour =
+        now.hour == 0 ? 12 : (now.hour > 12 ? now.hour - 12 : now.hour);
+    final minute = now.minute.toString().padLeft(2, '0');
+    final amPm = now.hour >= 12 ? 'pm' : 'am';
+
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final dateFormatted = '$month / $day';
+
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    return Padding(
+      padding: EdgeInsets.only(top: topPadding > 0 ? topPadding + 6 : 14),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Time & Date Chip on the left
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: colors.surface.withValues(alpha: 0.70),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: colors.inactivePill.withValues(alpha: 0.3),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.schedule_rounded, size: 15, color: colors.activePill),
+                const SizedBox(width: 6),
+                Text(
+                  '$hour:$minute $amPm',
+                  style: font.textStyleBuilder(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 3.5,
+                  height: 3.5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: colors.textSecondary.withValues(alpha: 0.7),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  dateFormatted,
+                  style: font.textStyleBuilder(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Battery & Edit Controls Chip on the right
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: 0.70),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: colors.inactivePill.withValues(alpha: 0.3),
+                    width: 1.0,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      state.isCharging
+                          ? Icons.battery_charging_full_rounded
+                          : Icons.battery_full_rounded,
+                      size: 15,
+                      color: colors.activePill,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      state.isCharging
+                          ? 'Charging ${state.batteryLevel}%'
+                          : '${state.batteryLevel}%',
+                      style: font.textStyleBuilder(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _buildCircleHeaderBtn(Icons.edit_outlined, colors, () {
+                HapticFeedback.lightImpact();
+                setState(() {
+                  _isEditMode = true;
+                  _selectedTileId = state.tiles.firstOrNull?.id;
+                });
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmartBrightnessSlider(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+  ) {
+    return ExpressiveSlider(
+      value: state.brightness,
+      onChanged: (val) => state.setBrightness(val),
+      leadingIcon: Icons.wb_sunny_rounded,
+      colors: colors,
+      height: 46.0,
+      style: state.sliderStyle,
+    );
+  }
+
+  List<List<QsTileModel>> _packTilesInto3ColRows(List<QsTileModel> tiles) {
+    final List<List<QsTileModel>> rows3 = [];
+    List<QsTileModel> curRow = [];
+    for (final tile in tiles) {
+      curRow.add(tile);
+      if (curRow.length == 3) {
+        rows3.add(curRow);
+        curRow = [];
+      }
+    }
+    if (curRow.isNotEmpty) {
+      rows3.add(curRow);
+    }
+    return rows3;
+  }
+
+  Widget _buildSmartTilesRowsPage(
+    List<List<QsTileModel>> rows,
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors, [
+    int baseRow = 0,
+  ]) {
+    return Column(
+      children: [
+        for (int r = 0; r < rows.length; r++) ...[
+          if (r > 0) const SizedBox(height: 10),
+          Row(
+            children: [
+              for (int c = 0; c < 3; c++) ...[
+                if (c > 0) const SizedBox(width: 10),
+                Expanded(
+                  child: c < rows[r].length
+                      ? _buildSmartTile(
+                          rows[r][c],
+                          state,
+                          colors,
+                          row: baseRow + r,
+                          col: c,
+                        )
+                      : const SizedBox(height: 58),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSmartTile(
+    QsTileModel tile,
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors, {
+    int row = 0,
+    int col = 0,
+  }) {
+    return _SmartMatrixTile(
+      tile: tile,
+      state: state,
+      colors: colors,
+      row: row,
+      col: col,
+      impulseNotifier: _tileImpulseNotifier,
+      onTap: () {
+        HapticFeedback.lightImpact();
+        state.toggleTile(tile.id);
+      },
+      onLongPress: () {
+        HapticFeedback.heavyImpact();
+        setState(() {
+          _isEditMode = true;
+          _selectedTileId = tile.id;
+        });
+      },
+    );
+  }
+
+  Widget _buildSmartNotifications(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    if (state.notifications.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        alignment: Alignment.center,
+        child: Text(
+          'No notifications',
+          style: font.textStyleBuilder(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: colors.activePill.withValues(alpha: 0.6),
+          ),
+        ),
+      );
+    }
+
+    if (_isSmartUnorganized) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSmartSectionHeader('All notifications', colors, font),
+          const SizedBox(height: 10),
+          for (int i = 0; i < state.notifications.length; i++)
+            _buildSmartNotificationCard(
+              state.notifications[i],
+              state,
+              colors,
+              font,
+              isFirstInGroup: i == 0,
+              isLastInGroup: i == state.notifications.length - 1,
+            ),
+          _buildSmartActionButtonsRow(state, colors, font),
+        ],
+      );
+    }
+
+    final important = <NotificationModel>[];
+    final other = <NotificationModel>[];
+
+    for (final notif in state.notifications) {
+      if (_isSmartImportant(notif)) {
+        important.add(notif);
+      } else {
+        other.add(notif);
+      }
+    }
+
+    if (important.isEmpty && other.isNotEmpty) {
+      important.addAll(other.take((other.length / 2).ceil()));
+      other.removeRange(0, important.length);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (important.isNotEmpty) ...[
+          _buildSmartSectionHeader('Important', colors, font),
+          const SizedBox(height: 8),
+          for (int i = 0; i < important.length; i++)
+            _buildSmartNotificationCard(
+              important[i],
+              state,
+              colors,
+              font,
+              isFirstInGroup: i == 0,
+              isLastInGroup: i == important.length - 1,
+            ),
+          const SizedBox(height: 16),
+        ],
+        if (other.isNotEmpty) ...[
+          _buildSmartSectionHeader('Other', colors, font),
+          const SizedBox(height: 8),
+          for (int i = 0; i < other.length; i++)
+            _buildSmartNotificationCard(
+              other[i],
+              state,
+              colors,
+              font,
+              isFirstInGroup: i == 0,
+              isLastInGroup: i == other.length - 1,
+            ),
+        ],
+        _buildSmartActionButtonsRow(state, colors, font),
+      ],
+    );
+  }
+
+  bool _isSmartImportant(NotificationModel notif) {
+    final combined =
+        '${notif.appName} ${notif.title} ${notif.content}'.toLowerCase();
+    if (notif.isOngoing) return true;
+    if (combined.contains('missed call') ||
+        combined.contains('call') ||
+        combined.contains('otp') ||
+        combined.contains('bank') ||
+        combined.contains('code') ||
+        combined.contains('driving') ||
+        combined.contains('license') ||
+        combined.contains('urgent') ||
+        combined.contains('security') ||
+        combined.contains('alert')) {
+      return true;
+    }
+    return false;
+  }
+
+  Widget _buildSmartSectionHeader(
+    String title,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: colors.activePill.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Text(
+          title,
+          style: font.textStyleBuilder(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: colors.activePill,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartNotificationCard(
+    NotificationModel notif,
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    FontConfig font, {
+    required bool isFirstInGroup,
+    required bool isLastInGroup,
+  }) {
+    final isCall = notif.title.toLowerCase().contains('call') ||
+        notif.content.toLowerCase().contains('call');
+    final isChat = notif.appName.toLowerCase().contains('whatsapp') ||
+        notif.appName.toLowerCase().contains('message') ||
+        notif.appName.toLowerCase().contains('chat');
+
+    String? actionLabel;
+    if (isCall) {
+      actionLabel = 'Call Back';
+    } else if (isChat) {
+      actionLabel = 'Reply';
+    } else if (notif.actions.isNotEmpty) {
+      actionLabel = notif.actions.first.title;
+    }
+
+    final BorderRadius borderRadius = BorderRadius.only(
+      topLeft: Radius.circular(isFirstInGroup ? 22 : 8),
+      topRight: Radius.circular(isFirstInGroup ? 22 : 8),
+      bottomLeft: Radius.circular(isLastInGroup ? 22 : 8),
+      bottomRight: Radius.circular(isLastInGroup ? 22 : 8),
+    );
+
+    if (_smartSettingsNotifId == notif.id) {
+      return NotificationChannelSettingsCard(
+        notification: notif,
+        colors: colors,
+        font: font,
+        borderRadius: borderRadius,
+        onClose: () => setState(() => _smartSettingsNotifId = null),
+      );
+    }
+
+    return SpringyDismissibleNotification(
+      key: Key('smart_notif_${notif.id}'),
+      colors: colors,
+      borderRadius: borderRadius,
+      margin: EdgeInsets.only(bottom: isLastInGroup ? 10 : 3),
+      onDismissed: () {
+        state.dismissNotification(notif.id);
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          state.openNotification(notif).then((opened) {
+            if (opened && mounted) {
+              widget.onDismissAndExecute?.call(() {});
+            }
+          });
+        },
+        onLongPress: () {
+          HapticFeedback.heavyImpact();
+          setState(() {
+            _smartSettingsNotifId =
+                (_smartSettingsNotifId == notif.id) ? null : notif.id;
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.72),
+            borderRadius: borderRadius,
+            border: Border.all(
+              color: colors.inactivePill.withValues(alpha: 0.25),
+              width: 0.8,
+            ),
+          ),
+          child: Row(
+            children: [
+              // Real App Icon / Avatar with rounded squircle background
+              Container(
+                width: 26,
+                height: 26,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: notif.appColor.withValues(alpha: 0.20),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: notif.appIconBytes != null
+                    ? Image.memory(
+                        notif.appIconBytes!,
+                        width: 26,
+                        height: 26,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Center(
+                          child: Icon(
+                            notif.appIcon,
+                            size: 14,
+                            color: notif.appColor,
+                          ),
+                        ),
+                      )
+                    : Center(
+                        child: Icon(
+                          notif.appIcon,
+                          size: 14,
+                          color: notif.appColor,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 12),
+
+              // Content text: Title & Content formatted
+              Expanded(
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      if (notif.title.isNotEmpty)
+                        TextSpan(
+                          text: '${notif.title}  ',
+                          style: font.textStyleBuilder(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      TextSpan(
+                        text: notif.content,
+                        style: font.textStyleBuilder(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+
+              // Action Pill Button (Call Back / Reply / etc.)
+              if (actionLabel != null) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (notif.actions.isNotEmpty) {
+                      state.performNotificationAction(
+                        notif,
+                        notif.actions.first,
+                      );
+                    }
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: colors.activePill.withValues(alpha: 0.65),
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      actionLabel,
+                      style: font.textStyleBuilder(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: colors.activePill,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+
+              // Distinct vertical accent bar on the right
+              Container(
+                width: 5,
+                height: 32,
+                margin: const EdgeInsets.only(left: 10),
+                decoration: BoxDecoration(
+                  color: colors.activePill.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartActionButtonsRow(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14, bottom: 8),
+      child: Row(
+        children: [
+          // 1. History Icon Button
+          _buildSmartIconButton(
+            icon: Icons.history_rounded,
+            colors: colors,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              SystemHardwareService.openNotificationHistory();
+            },
+          ),
+          const SizedBox(width: 10),
+
+          // 2. Wide Clear All Button (prominent in the center)
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                HapticFeedback.mediumImpact();
+                state.clearAllNotifications();
+              },
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    'Clear all',
+                    style: font.textStyleBuilder(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: colors.activePill,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // 3. Organize / Unorganize Icon Button
+          _buildSmartIconButton(
+            icon: _isSmartUnorganized
+                ? Icons.auto_awesome_mosaic_rounded
+                : Icons.filter_list_rounded,
+            colors: colors,
+            onTap: () {
+              HapticFeedback.lightImpact();
+              setState(() {
+                _isSmartUnorganized = !_isSmartUnorganized;
+              });
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmartIconButton({
+    required IconData icon,
+    required ExpressiveThemeColors colors,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: colors.surface.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Center(
+          child: Icon(
+            icon,
+            size: 21,
+            color: colors.activePill,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmartEditTilesView(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+  ) {
+    final font = state.selectedFont;
+    final topPadding = MediaQuery.of(context).padding.top;
+
+    return ListView(
+      physics: const BouncingScrollPhysics(),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        topPadding > 0 ? topPadding + 6 : 14,
+        16,
+        32,
+      ),
+      children: [
+        // Header Row with Title and Done button
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Rearrange Tiles',
+                  style: font.textStyleBuilder(
+                    fontSize: 24.0,
+                    fontWeight: FontWeight.w700,
+                    color: colors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Drag to change tile positions',
+                  style: font.textStyleBuilder(
+                    fontSize: 13.0,
+                    fontWeight: FontWeight.w400,
+                    color: colors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                setState(() => _isEditMode = false);
+              },
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: colors.activePill,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.check_rounded,
+                      size: 16,
+                      color: colors.onActivePill,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Done',
+                      style: font.textStyleBuilder(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: colors.onActivePill,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+
+        // 3-Column Matrix Active Tiles Container
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: colors.surface.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: colors.inactivePill.withValues(alpha: 0.35),
+              width: 1.0,
+            ),
+          ),
+          child: _buildSmartEditGrid(state, colors, font),
+        ),
+        const SizedBox(height: 24),
+
+        // Available Tiles Section (tap to add to matrix, without resizing)
+        Text(
+          'Available Tiles',
+          style: font.textStyleBuilder(
+            fontSize: 16.0,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Tap to add or remove tiles from the matrix',
+          style: font.textStyleBuilder(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w400,
+            color: colors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        _buildSmartAvailableTilesGrid(state, colors, font),
+      ],
+    );
+  }
+
+  Widget _buildSmartEditGrid(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    final activeTiles = state.tiles;
+    if (activeTiles.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Text(
+            'No active tiles',
+            style: font.textStyleBuilder(
+              fontSize: 14,
+              color: colors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Chunk tiles into rows of 3
+    final List<List<QsTileModel>> rows = [];
+    for (int i = 0; i < activeTiles.length; i += 3) {
+      final end = (i + 3 < activeTiles.length) ? i + 3 : activeTiles.length;
+      rows.add(activeTiles.sublist(i, end));
+    }
+
+    return Column(
+      children: [
+        for (int r = 0; r < rows.length; r++) ...[
+          if (r > 0) const SizedBox(height: 10),
+          Row(
+            children: [
+              for (int c = 0; c < 3; c++) ...[
+                if (c > 0) const SizedBox(width: 10),
+                Expanded(
+                  child: c < rows[r].length
+                      ? _buildSmartEditTileItem(
+                          tile: rows[r][c],
+                          state: state,
+                          colors: colors,
+                          font: font,
+                        )
+                      : const SizedBox(height: 64),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSmartEditTileItem({
+    required QsTileModel tile,
+    required ShadeStateProvider state,
+    required ExpressiveThemeColors colors,
+    required FontConfig font,
+  }) {
+    final isSelected = _selectedTileId == tile.id;
+
+    final tileBox = Container(
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      decoration: BoxDecoration(
+        color: tile.isActive
+            ? colors.activePill
+            : colors.surface.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isSelected
+              ? colors.activePill
+              : (tile.isActive
+                  ? colors.activePill
+                  : colors.inactivePill.withValues(alpha: 0.4)),
+          width: isSelected ? 2.0 : 1.0,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                tile.icon,
+                size: 20,
+                color:
+                    tile.isActive ? colors.onActivePill : colors.textPrimary,
+              ),
+              const SizedBox(width: 4),
+              Icon(
+                Icons.drag_indicator_rounded,
+                size: 14,
+                color: (tile.isActive
+                        ? colors.onActivePill
+                        : colors.textSecondary)
+                    .withValues(alpha: 0.6),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            tile.title,
+            style: font.textStyleBuilder(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color:
+                  tile.isActive ? colors.onActivePill : colors.textPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+
+    return DragTarget<String>(
+      onWillAcceptWithDetails: (details) => details.data != tile.id,
+      onAcceptWithDetails: (details) {
+        HapticFeedback.mediumImpact();
+        state.moveTile(details.data, tile.id);
+        setState(() {
+          _selectedTileId = details.data;
+        });
+      },
+      builder: (context, candidateData, rejectedData) {
+        final isHovered = candidateData.isNotEmpty;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: isHovered
+                ? Border.all(color: colors.activePill, width: 2.5)
+                : null,
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              LongPressDraggable<String>(
+                data: tile.id,
+                delay: const Duration(milliseconds: 80),
+                feedback: Material(
+                  color: Colors.transparent,
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(14),
+                  child: SizedBox(
+                    width: 90,
+                    height: 64,
+                    child: Opacity(opacity: 0.9, child: tileBox),
+                  ),
+                ),
+                childWhenDragging: Opacity(
+                  opacity: 0.25,
+                  child: tileBox,
+                ),
+                child: tileBox,
+              ),
+              // Subtle remove button at top right
+              Positioned(
+                top: -5,
+                right: -5,
+                child: GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    state.removeTile(tile.id);
+                  },
+                  child: Container(
+                    width: 20,
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: colors.inactivePill,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: colors.surface,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.close_rounded,
+                      size: 12,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSmartAvailableTilesGrid(
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    final inactiveTiles = QsTileModel.allAvailableTiles
+        .where((t) => !state.tiles.any((at) => at.id == t.id))
+        .toList();
+
+    if (inactiveTiles.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Text(
+            'All tiles added',
+            style: font.textStyleBuilder(
+              fontSize: 13,
+              color: colors.textSecondary,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 1.5,
+      ),
+      itemCount: inactiveTiles.length,
+      itemBuilder: (context, index) {
+        final tile = inactiveTiles[index];
+        return GestureDetector(
+          onTap: () {
+            HapticFeedback.lightImpact();
+            state.addTile(tile);
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            decoration: BoxDecoration(
+              color: colors.surface.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: colors.inactivePill.withValues(alpha: 0.3),
+                width: 1.0,
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  tile.icon,
+                  size: 18,
+                  color: colors.textPrimary,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    tile.title,
+                    style: font.textStyleBuilder(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: colors.textPrimary,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.add_rounded,
+                  size: 14,
+                  color: colors.activePill,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildUnifiedShadeView(
     ShadeStateProvider state,
     ExpressiveThemeColors colors,
   ) {
     final font = state.selectedFont;
     final allRows = _packTilesIntoRows(state.tiles);
-    final firstTwoRows = allRows.take(2).toList();
-    final remainingRows = allRows.skip(2).toList();
 
-    return NotificationListener<ScrollNotification>(
-      onNotification: (notification) {
-        if (notification is ScrollStartNotification) {
-          _reduceBlur.value = true;
-        } else if (notification is ScrollUpdateNotification) {
-          if (notification.metrics.pixels <= 0) {
-            final scrollDelta = notification.scrollDelta ?? 0;
-            if (scrollDelta < 0 && !state.isUnifiedQsExpanded) {
-              // Overscrolling downwards expands QS smoothly in real-time
-              final delta = -scrollDelta / 280.0;
-              _qsBouncyController.value = (_qsBouncyController.value + delta)
-                  .clamp(0.0, 1.0);
-            } else if (scrollDelta > 0 && _qsBouncyController.value > 0) {
-              // Scrolling upwards from top contracts QS smoothly in real-time
-              final delta = scrollDelta / 280.0;
-              _qsBouncyController.value = (_qsBouncyController.value - delta)
-                  .clamp(0.0, 1.0);
-            }
-          }
-        } else if (notification is ScrollEndNotification) {
-          _reduceBlur.value = false;
-          if (!_isDraggingQs) {
-            if (_qsBouncyController.value > 0.40 &&
-                !state.isUnifiedQsExpanded) {
-              HapticFeedback.lightImpact();
-              _qsBouncyController.animateTo(
-                1.0,
-                curve: Curves.easeOutCubic,
-                duration: const Duration(milliseconds: 170),
-              );
-              state.setUnifiedQsExpanded(true);
-            } else if (_qsBouncyController.value < 0.40 &&
-                state.isUnifiedQsExpanded) {
-              HapticFeedback.lightImpact();
-              _qsBouncyController.animateTo(
-                0.0,
-                curve: Curves.easeInCubic,
-                duration: const Duration(milliseconds: 140),
-              );
-              state.setUnifiedQsExpanded(false);
-            }
-          }
-        }
-        return false;
-      },
-      child: ListView(
-        controller: _unifiedScrollController,
-        physics: const BouncingScrollPhysics(
-          parent: AlwaysScrollableScrollPhysics(),
-        ),
+    return ListView(
+      controller: _unifiedScrollController,
+      physics: const BouncingScrollPhysics(
+        parent: AlwaysScrollableScrollPhysics(),
+      ),
         padding: const EdgeInsets.only(top: 8, bottom: 0),
         children: [
-          // Quick Settings Section with real-time drag-to-expand / drag-to-contract support
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onVerticalDragStart: (_) {
-              _isDraggingQs = true;
-            },
-            onVerticalDragUpdate: (details) {
-              // 1:1 real-time drag expansion
-              final delta = details.delta.dy / 280.0;
-              _qsBouncyController.value = (_qsBouncyController.value + delta)
-                  .clamp(0.0, 1.0);
-            },
-            onVerticalDragEnd: (details) {
-              _isDraggingQs = false;
-              final velocity = details.primaryVelocity ?? 0;
-              if (velocity > 160 ||
-                  (_qsBouncyController.value > 0.40 && velocity > -120)) {
-                // Dragged down past threshold or downward fling: snap to expanded with smooth cubic deceleration
-                HapticFeedback.lightImpact();
-                _qsBouncyController.animateTo(
-                  1.0,
-                  curve: Curves.easeOutCubic,
-                  duration: const Duration(milliseconds: 170),
-                );
-                state.setUnifiedQsExpanded(true);
-              } else {
-                // Dragged up or upward fling: snap back to collapsed
-                HapticFeedback.lightImpact();
-                _qsBouncyController.animateTo(
-                  0.0,
-                  curve: Curves.easeInCubic,
-                  duration: const Duration(milliseconds: 140),
-                );
-                state.setUnifiedQsExpanded(false);
-              }
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Brightness & Volume Sliders (ONLY visible in expanded state with bouncy animation)
-                  AnimatedBuilder(
-                    animation: _bouncyCurveAnimation,
-                    builder: (context, child) {
-                      if (_qsBouncyController.value <= 0.001) {
-                        return const SizedBox.shrink();
-                      }
-                      return SizeTransition(
-                        sizeFactor: _bouncyCurveAnimation,
-                        alignment: Alignment.topCenter,
-                        child: FadeTransition(
-                          opacity: _qsBouncyController,
-                          child: child,
-                        ),
-                      );
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Sliders for Brightness and Media/Volume AT THE TOP
+                ClipRect(
+                  child: SizeTransition(
+                    sizeFactor: _bouncyCurveAnimation,
+                    alignment: Alignment.topCenter,
+                    child: FadeTransition(
+                      opacity: _bouncyCurveAnimation,
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Brightness Capsule Slider
                           ExpressiveSlider(
@@ -1105,7 +2483,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           ),
                           const SizedBox(height: 10),
 
-                          // Volume Capsule Slider
+                          // Volume / Media Capsule Slider
                           ExpressiveSlider(
                             value: state.volume,
                             onChanged: (val) => state.setVolume(val),
@@ -1115,41 +2493,82 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                             colors: colors,
                             style: state.sliderStyle,
                           ),
+                          const SizedBox(height: 12),
                         ],
                       ),
                     ),
                   ),
+                ),
 
-                  // Dynamic Tiles Grid: First 2 Rows (Always visible)
-                  _buildDynamicTilesGridCustom(state, colors, firstTwoRows),
+                // 2. Unified Paginated Quick Settings Grid (Entire grid pages together!)
+                _buildUnifiedPaginatedTilesGrid(state, colors, allRows),
 
-                  // Dynamic Tiles Grid: Remaining Rows (Animated with bouncy spring expansion)
-                  if (remainingRows.isNotEmpty) ...[
-                    AnimatedBuilder(
-                      animation: _bouncyCurveAnimation,
-                      builder: (context, child) {
-                        if (_qsBouncyController.value <= 0.001) {
-                          return const SizedBox.shrink();
-                        }
-                        return SizeTransition(
-                          sizeFactor: _bouncyCurveAnimation,
-                          alignment: Alignment.topCenter,
-                          child: FadeTransition(
-                            opacity: _qsBouncyController,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: _buildDynamicTilesGridCustom(
-                          state,
-                          colors,
-                          remainingRows,
-                        ),
+                // 3. Drag Handle / Tap to Expand or Contract (with smooth animation)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (state.isUnifiedQsExpanded ||
+                        _qsBouncyController.value > 0.5) {
+                      _qsBouncyController.animateTo(
+                        0.0,
+                        curve: Curves.easeInCubic,
+                        duration: const Duration(milliseconds: 200),
+                      );
+                      state.setUnifiedQsExpanded(false);
+                    } else {
+                      _qsBouncyController.animateTo(
+                        1.0,
+                        curve: Curves.easeOutCubic,
+                        duration: const Duration(milliseconds: 240),
+                      );
+                      state.setUnifiedQsExpanded(true);
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Center(
+                      child: AnimatedBuilder(
+                        animation: _bouncyCurveAnimation,
+                        builder: (context, _) {
+                          final isExpanded = _qsBouncyController.value > 0.5;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: colors.activePill.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 34,
+                                  height: 3.5,
+                                  decoration: BoxDecoration(
+                                    color: colors.activePill
+                                        .withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Icon(
+                                  isExpanded
+                                      ? Icons.keyboard_arrow_up_rounded
+                                      : Icons.keyboard_arrow_down_rounded,
+                                  size: 16,
+                                  color: colors.activePill,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
                     ),
-                  ],
+                  ),
+                ),
 
                   // Expressive Media Card (Animated bouncy or active)
                   if (state.isPlaying) ...[
@@ -1163,64 +2582,24 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                       artwork: state.mediaArtwork,
                       colors: colors,
                       font: font,
+                      style: state.mediaPlayerStyle,
                       onPlayPause: () => state.togglePlayPause(),
                       onSkipNext: () => state.skipNextMedia(),
                       onSkipPrevious: () => state.skipPreviousMedia(),
                       onProgressChanged: (val) => state.setMediaProgress(val),
                     ),
-                  ] else ...[
-                    AnimatedBuilder(
-                      animation: _bouncyCurveAnimation,
-                      builder: (context, child) {
-                        if (_qsBouncyController.value <= 0.001) {
-                          return const SizedBox.shrink();
-                        }
-                        return SizeTransition(
-                          sizeFactor: _bouncyCurveAnimation,
-                          alignment: Alignment.topCenter,
-                          child: FadeTransition(
-                            opacity: _qsBouncyController,
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: RepaintBoundary(
-                          child: ExpressiveMediaCard(
-                            title: state.mediaTitle,
-                            artist: state.mediaArtist,
-                            appSource: state.mediaApp,
-                            isPlaying: state.isPlaying,
-                            progress: state.mediaProgress,
-                            artwork: state.mediaArtwork,
-                            colors: colors,
-                            font: font,
-                            onPlayPause: () => state.togglePlayPause(),
-                            onSkipNext: () => state.skipNextMedia(),
-                            onSkipPrevious: () => state.skipPreviousMedia(),
-                            onProgressChanged: (val) =>
-                                state.setMediaProgress(val),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ],
               ),
             ),
-          ),
           const SizedBox(height: 12),
 
           // Distinct Division: Notifications Container with Rounded Top Corners & Acrylic Blur
-          _wrapWithNotificationsDragToClose(
-            RepaintBoundary(
-              child: _buildNotificationsContainer(state, colors, font),
-            ),
+          RepaintBoundary(
+            child: _buildNotificationsContainer(state, colors, font),
           ),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildNotificationsContainer(
@@ -1942,6 +3321,517 @@ class _LiveClockState extends State<_LiveClock> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _PaginatedTilesContainer extends StatefulWidget {
+  final ExpressiveThemeColors colors;
+  final List<List<List<QsTileModel>>> pages;
+  final Widget Function(BuildContext context, int pageIndex) builder;
+  final double fixedHeight;
+
+  const _PaginatedTilesContainer({
+    required this.colors,
+    required this.pages,
+    required this.builder,
+    this.fixedHeight = (5 * 68.0) + (4 * 12.0),
+  });
+
+  @override
+  State<_PaginatedTilesContainer> createState() =>
+      _PaginatedTilesContainerState();
+}
+
+class _PaginatedTilesContainerState extends State<_PaginatedTilesContainer> {
+  late PageController _pageController;
+  int _currentPage = 0;
+  bool _isIndicatorVisible = false;
+  Timer? _fadeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+    if (widget.pages.length > 1) {
+      _showIndicatorBriefly();
+    }
+  }
+
+  void _showIndicatorBriefly([
+    Duration duration = const Duration(milliseconds: 1800),
+  ]) {
+    _fadeTimer?.cancel();
+    if (mounted && !_isIndicatorVisible) {
+      setState(() => _isIndicatorVisible = true);
+    }
+    _fadeTimer = Timer(duration, () {
+      if (mounted && _isIndicatorVisible) {
+        setState(() => _isIndicatorVisible = false);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _PaginatedTilesContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_currentPage >= widget.pages.length) {
+      _currentPage = (widget.pages.length - 1).clamp(0, widget.pages.length);
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(_currentPage);
+      }
+    }
+    if (widget.pages.length != oldWidget.pages.length &&
+        widget.pages.length > 1) {
+      _showIndicatorBriefly();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fadeTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showIndicator = widget.pages.length > 1;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: widget.fixedHeight,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              if (notification is ScrollStartNotification ||
+                  notification is ScrollUpdateNotification) {
+                _fadeTimer?.cancel();
+                if (!_isIndicatorVisible) {
+                  setState(() => _isIndicatorVisible = true);
+                }
+              } else if (notification is ScrollEndNotification) {
+                _showIndicatorBriefly();
+              }
+              return false;
+            },
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: widget.pages.length,
+              onPageChanged: (page) {
+                setState(() => _currentPage = page);
+                _showIndicatorBriefly();
+              },
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                  child: Align(
+                    alignment: Alignment.topCenter,
+                    child: widget.builder(context, index),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+        if (showIndicator) ...[
+          const SizedBox(height: 12),
+          // Material 3 Expressive Pill Dots Indicator (fades out when inactive)
+          AnimatedOpacity(
+            opacity: _isIndicatorVisible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.pages.length, (index) {
+                final isSelected = index == _currentPage;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: isSelected ? 20 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? widget.colors.activePill
+                        : widget.colors.inactivePill,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _UnifiedPaginatedTilesContainer extends StatefulWidget {
+  final ExpressiveThemeColors colors;
+  final List<List<List<QsTileModel>>> pages;
+  final Animation<double> bouncyAnimation;
+  final Widget Function(BuildContext context, int pageIndex) builder;
+
+  const _UnifiedPaginatedTilesContainer({
+    required this.colors,
+    required this.pages,
+    required this.bouncyAnimation,
+    required this.builder,
+  });
+
+  @override
+  State<_UnifiedPaginatedTilesContainer> createState() =>
+      _UnifiedPaginatedTilesContainerState();
+}
+
+class _UnifiedPaginatedTilesContainerState
+    extends State<_UnifiedPaginatedTilesContainer> {
+  late PageController _pageController;
+  int _currentPage = 0;
+  bool _isIndicatorVisible = false;
+  Timer? _fadeTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+    if (widget.pages.length > 1) {
+      _showIndicatorBriefly();
+    }
+  }
+
+  void _showIndicatorBriefly([
+    Duration duration = const Duration(milliseconds: 1800),
+  ]) {
+    _fadeTimer?.cancel();
+    if (mounted && !_isIndicatorVisible) {
+      setState(() => _isIndicatorVisible = true);
+    }
+    _fadeTimer = Timer(duration, () {
+      if (mounted && _isIndicatorVisible) {
+        setState(() => _isIndicatorVisible = false);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant _UnifiedPaginatedTilesContainer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_currentPage >= widget.pages.length) {
+      _currentPage = (widget.pages.length - 1).clamp(0, widget.pages.length);
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(_currentPage);
+      }
+    }
+    if (widget.pages.length != oldWidget.pages.length &&
+        widget.pages.length > 1) {
+      _showIndicatorBriefly();
+    }
+  }
+
+  @override
+  void dispose() {
+    _fadeTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final showIndicator = widget.pages.length > 1;
+
+    // Calculate maximum rows on any page (capped at 5)
+    int maxRows = 2;
+    for (final page in widget.pages) {
+      if (page.length > maxRows) maxRows = page.length;
+    }
+    maxRows = maxRows.clamp(2, 5);
+
+    const double collapsedHeight = (2 * 68.0) + (1 * 12.0); // 148.0
+    final double expandedHeight = (maxRows * 68.0) + ((maxRows - 1) * 12.0);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedBuilder(
+          animation: widget.bouncyAnimation,
+          builder: (context, _) {
+            final currentHeight = collapsedHeight +
+                (expandedHeight - collapsedHeight) *
+                    widget.bouncyAnimation.value;
+
+            return SizedBox(
+              height: currentHeight,
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollStartNotification ||
+                      notification is ScrollUpdateNotification) {
+                    _fadeTimer?.cancel();
+                    if (!_isIndicatorVisible) {
+                      setState(() => _isIndicatorVisible = true);
+                    }
+                  } else if (notification is ScrollEndNotification) {
+                    _showIndicatorBriefly();
+                  }
+                  return false;
+                },
+                child: PageView.builder(
+                  controller: _pageController,
+                  itemCount: widget.pages.length,
+                  physics: const BouncingScrollPhysics(),
+                  onPageChanged: (page) {
+                    setState(() => _currentPage = page);
+                    _showIndicatorBriefly();
+                  },
+                  itemBuilder: (context, index) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 6.0),
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: widget.builder(context, index),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            );
+          },
+        ),
+        if (showIndicator) ...[
+          const SizedBox(height: 12),
+          // Material 3 Expressive Pill Dots Indicator (fades out when inactive)
+          AnimatedOpacity(
+            opacity: _isIndicatorVisible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.pages.length, (index) {
+                final isSelected = index == _currentPage;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 250),
+                  curve: Curves.easeOutCubic,
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: isSelected ? 20 : 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? widget.colors.activePill
+                        : widget.colors.inactivePill,
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SmartMatrixTile extends StatefulWidget {
+  final QsTileModel tile;
+  final ShadeStateProvider state;
+  final ExpressiveThemeColors colors;
+  final int row;
+  final int col;
+  final ValueNotifier<TileImpulse?>? impulseNotifier;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+
+  const _SmartMatrixTile({
+    required this.tile,
+    required this.state,
+    required this.colors,
+    required this.row,
+    required this.col,
+    required this.impulseNotifier,
+    required this.onTap,
+    required this.onLongPress,
+  });
+
+  @override
+  State<_SmartMatrixTile> createState() => _SmartMatrixTileState();
+}
+
+class _SmartMatrixTileState extends State<_SmartMatrixTile>
+    with TickerProviderStateMixin {
+  late AnimationController _pressController;
+  late Animation<double> _pressHeightAnim;
+  late Animation<double> _pressWidthAnim;
+
+  late AnimationController _neighborController;
+  late Animation<double> _neighborHeightAnim;
+  late Animation<double> _neighborWidthAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pressController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 80),
+      reverseDuration: const Duration(milliseconds: 280),
+    );
+    _pressHeightAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
+      CurvedAnimation(
+        parent: _pressController,
+        curve: Curves.easeInQuad,
+        reverseCurve: Curves.easeOutBack,
+      ),
+    );
+    _pressWidthAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
+      CurvedAnimation(
+        parent: _pressController,
+        curve: Curves.easeInQuad,
+        reverseCurve: Curves.easeOutBack,
+      ),
+    );
+
+    _neighborController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 90),
+      reverseDuration: const Duration(milliseconds: 320),
+    );
+    _neighborHeightAnim = Tween<double>(begin: 0.0, end: 4.0).animate(
+      CurvedAnimation(
+        parent: _neighborController,
+        curve: Curves.easeOutQuad,
+        reverseCurve: Curves.easeOutBack,
+      ),
+    );
+    _neighborWidthAnim = Tween<double>(begin: 0.0, end: 4.5).animate(
+      CurvedAnimation(
+        parent: _neighborController,
+        curve: Curves.easeOutQuad,
+        reverseCurve: Curves.easeOutBack,
+      ),
+    );
+
+    widget.impulseNotifier?.addListener(_onImpulse);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SmartMatrixTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.impulseNotifier != oldWidget.impulseNotifier) {
+      oldWidget.impulseNotifier?.removeListener(_onImpulse);
+      widget.impulseNotifier?.addListener(_onImpulse);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.impulseNotifier?.removeListener(_onImpulse);
+    _pressController.dispose();
+    _neighborController.dispose();
+    super.dispose();
+  }
+
+  void _onImpulse() {
+    final impulse = widget.impulseNotifier?.value;
+    if (impulse == null || impulse.tileId == widget.tile.id) return;
+
+    final dr = (widget.row - impulse.row).toDouble();
+    final dc = (widget.col - impulse.col).toDouble();
+    final dist = math.sqrt(dr * dr + dc * dc);
+
+    if (dist <= 1.5 && mounted) {
+      final delayMs = (dist * 20).toInt();
+      Future.delayed(Duration(milliseconds: delayMs), () {
+        if (mounted) {
+          _neighborController.forward().then((_) {
+            if (mounted) _neighborController.reverse();
+          });
+        }
+      });
+    }
+  }
+
+  void _handleTapDown([TapDownDetails? _]) {
+    _pressController.forward();
+    HapticFeedback.lightImpact();
+    widget.impulseNotifier?.value = TileImpulse(
+      tileId: widget.tile.id,
+      row: widget.row,
+      col: widget.col,
+      timestamp: DateTime.now().millisecondsSinceEpoch,
+    );
+  }
+
+  void _handleTapUp([TapUpDetails? _]) {
+    _pressController.reverse();
+    widget.onTap();
+  }
+
+  void _handleTapCancel() {
+    _pressController.reverse();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tile = widget.tile;
+    final colors = widget.colors;
+    final isActive = tile.isActive;
+
+    return AnimatedBuilder(
+      animation: Listenable.merge([
+        _pressHeightAnim,
+        _pressWidthAnim,
+        _neighborHeightAnim,
+        _neighborWidthAnim,
+      ]),
+      builder: (context, child) {
+        final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
+        final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
+        final currentHeight = (58.0 - hSquish).clamp(40.0, 58.0);
+
+        return SizedBox(
+          height: 58.0,
+          child: Center(
+            child: SizedBox(
+              height: currentHeight,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: (wSquish / 2).clamp(0.0, 8.0),
+                ),
+                child: child,
+              ),
+            ),
+          ),
+        );
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: _handleTapDown,
+        onTapUp: _handleTapUp,
+        onTapCancel: _handleTapCancel,
+        onLongPress: widget.onLongPress,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: isActive ? colors.activePill : colors.inactivePill,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isActive
+                  ? colors.activePill
+                  : colors.inactivePill.withValues(alpha: 0.3),
+              width: 1.0,
+            ),
+          ),
+          child: Center(
+            child: Icon(
+              tile.icon,
+              size: 26,
+              color: isActive ? colors.onActivePill : colors.onInactivePill,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

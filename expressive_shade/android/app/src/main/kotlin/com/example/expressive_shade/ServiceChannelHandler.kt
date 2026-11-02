@@ -12,6 +12,7 @@ class ServiceChannelHandler(private val context: Context) : MethodChannel.Method
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         when (call.method) {
             "startOverlayService" -> {
+                ServicePrefs.setEnabled(context, true)
                 val intent = Intent(context, ExpressiveOverlayService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
@@ -23,12 +24,13 @@ class ServiceChannelHandler(private val context: Context) : MethodChannel.Method
                 result.success(true)
             }
             "stopOverlayService" -> {
+                ServicePrefs.setEnabled(context, false)
                 context.stopService(Intent(context, ExpressiveOverlayService::class.java))
                 ExpressiveAccessibilityService.isEnabled = false
                 ExpressiveAccessibilityService.instance?.removeTopGestureTrigger()
                 result.success(true)
             }
-            "isServiceRunning" -> result.success(ExpressiveOverlayService.isRunning)
+            "isServiceRunning" -> result.success(ServicePrefs.isEnabled(context) && ExpressiveOverlayService.isRunning)
             "deployCustomShade" -> {
                 val target = call.argument<String>("target") ?: "quick_settings"
                 if (ExpressiveAccessibilityService.instance != null) {

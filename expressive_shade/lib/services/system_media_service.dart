@@ -19,7 +19,9 @@ class SystemMediaInfo {
 }
 
 class SystemMediaService {
-  static const MethodChannel _channel = MethodChannel('com.expressive_shade/media');
+  static const MethodChannel _channel = MethodChannel(
+    'com.expressive_shade/media',
+  );
   static VoidCallback? _onMediaChanged;
 
   static void initialize(VoidCallback onUpdate) {
@@ -33,7 +35,9 @@ class SystemMediaService {
 
   static Future<SystemMediaInfo?> getMediaState() async {
     try {
-      final raw = await _channel.invokeMapMethod<String, dynamic>('getMediaState');
+      final raw = await _channel.invokeMapMethod<String, dynamic>(
+        'getMediaState',
+      );
       if (raw == null) return null;
 
       Uint8List? artBytes;
@@ -59,6 +63,12 @@ class SystemMediaService {
   static Future<void> controlMedia(String action) async {
     try {
       await _channel.invokeMethod('controlMedia', {'action': action});
+    } catch (_) {}
+  }
+
+  static Future<void> seekTo(double position) async {
+    try {
+      await _channel.invokeMethod('seekTo', {'position': position});
     } catch (_) {}
   }
 }

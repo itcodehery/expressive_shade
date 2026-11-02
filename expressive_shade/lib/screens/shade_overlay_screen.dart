@@ -126,7 +126,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
 
   void _handleShadeDragEnd(double velocity) {
     if (_isDismissing) return;
-    if (velocity < -250 || _animController.value < 0.60) {
+    if (velocity < -120 || _animController.value < 0.75) {
       _dismissOverlay();
     } else {
       _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 150));
@@ -158,38 +158,18 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       },
       child: Scaffold(
         backgroundColor: Colors.transparent,
-        body: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onVerticalDragUpdate: (details) {
-            // Drag the notification shade slowly 1:1 with finger
-            final screenHeight = MediaQuery.of(context).size.height;
-            final delta = details.delta.dy / screenHeight;
-            _animController.value = (_animController.value + delta).clamp(0.0, 1.0);
-          },
-          onVerticalDragEnd: (details) {
-            final velocity = details.primaryVelocity ?? 0;
-            if (velocity < -250 || _animController.value < 0.65) {
-              // Fling up or released near top closes the shade
-              _animController.animateTo(0.0, curve: Curves.easeInCubic, duration: const Duration(milliseconds: 220)).then((_) {
-                _dismissOverlay();
-              });
-            } else {
-              // Snaps fully open
-              _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 200));
-            }
-          },
-          child: Stack(
-            children: [
-              // Darkened Backdrop
-              FadeTransition(
-                opacity: _fadeAnimation,
-                child: GestureDetector(
-                  onTap: _dismissOverlay,
-                  child: Container(
-                    color: Colors.black.withValues(alpha: 0.50),
-                  ),
+        body: Stack(
+          children: [
+            // Darkened Backdrop
+            FadeTransition(
+              opacity: _fadeAnimation,
+              child: GestureDetector(
+                onTap: _dismissOverlay,
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.50),
                 ),
               ),
+            ),
 
               // Full-Screen Sliding Shade Canvas (covers top to bottom edge-to-edge)
               SlideTransition(
@@ -252,7 +232,6 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
             ],
           ),
         ),
-      ),
-    );
+      );
   }
 }
