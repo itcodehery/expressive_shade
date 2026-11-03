@@ -47,11 +47,6 @@ class ShadeOverlayActivity : FlutterActivity() {
             WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_BLUR_BEHIND)
-            window.attributes.blurBehindRadius = 50
-        }
-
         hideSystemStatusBar()
     }
 

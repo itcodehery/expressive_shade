@@ -35,8 +35,8 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 170),
-      reverseDuration: const Duration(milliseconds: 140),
+      duration: const Duration(milliseconds: 230),
+      reverseDuration: const Duration(milliseconds: 180),
     );
 
     _slideAnimation = Tween<Offset>(
@@ -54,34 +54,33 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       CurvedAnimation(parent: _animController, curve: Curves.easeOut),
     );
 
+    // Slide down immediately without waiting or disk I/O blocking
+    _animController.forward(from: 0.0);
+
     _overlayChannel.setMethodCallHandler((call) async {
       if (call.method == 'onPanelTargetChanged' || call.method == 'reloadSettings') {
         final target = call.arguments?.toString();
         if (mounted) {
           _isDismissing = false;
           final state = context.read<ShadeStateProvider>();
-          await state.loadSavedSettings();
           if (target != null && target.isNotEmpty) {
             state.setSplitTabIndex(target == 'notifications' ? 0 : 1);
           }
           state.setUnifiedQsExpanded(false);
           state.markShadeOpened();
           if (_animController.value < 1.0) {
-            _animController.forward(from: _animController.value == 1.0 ? 0.0 : _animController.value);
+            _animController.forward(from: _animController.value);
           }
         }
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _isDismissing = false;
         final state = context.read<ShadeStateProvider>();
-        await state.loadSavedSettings();
         state.setSplitTabIndex(widget.initialTarget == 'notifications' ? 0 : 1);
         state.setUnifiedQsExpanded(false);
         state.markShadeOpened();
-        _animController.forward(from: 0.0);
       }
     });
   }
@@ -113,13 +112,15 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     try {
       context.read<ShadeStateProvider>().flushSave();
     } catch (_) {}
+    try {
+      action();
+    } catch (_) {}
     _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
         SystemNavigator.pop();
       }
-      action();
     });
   }
 
@@ -142,17 +143,12 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ShadeStateProvider>();
-    final isPlatformDark = MediaQuery.platformBrightnessOf(context) == Brightness.dark;
-    final isDark = state.themeMode == ThemeMode.system
-        ? isPlatformDark
-        : (state.themeMode == ThemeMode.dark);
 
     final themeColors = ExpressiveThemeColors.fromSettings(
       source: state.themeSource,
       preset: state.selectedPreset,
       custom: state.customTheme,
       systemMonetColor: state.systemMonetColor,
-      isDark: isDark,
     );
 
     return PopScope(
@@ -177,16 +173,18 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
               ),
             ),
 
-              // Full-Screen Sliding Shade Canvas (covers top to bottom edge-to-edge)
-              SlideTransition(
-                position: _slideAnimation,
+            // Sliding Shade Canvas with curved bottom corners
+            SlideTransition(
+              position: _slideAnimation,
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
                 child: Container(
                   width: double.infinity,
                   height: double.infinity,
-                  color: Colors.transparent,
+                  color: themeColors.background,
                   child: Stack(
                     children: [
-                      // Full-Height Interactive Shade Canvas extending edge-to-edge seamlessly
+                      // Full-Height Interactive Shade Canvas
                       Positioned.fill(
                         child: RepaintBoundary(
                           child: InteractiveShadeCanvas(
@@ -197,7 +195,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                           ),
                         ),
                       ),
-                      // Bottom Home Drag Handle overlaying content (matches refs/10_android17_caramel_unified_shade_ref.png)
+                      // Bottom drag gesture area (Indicator hidden as requested)
                       Positioned(
                         bottom: 0,
                         left: 0,
@@ -216,18 +214,8 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                           },
                           child: Container(
                             width: double.infinity,
-                            padding: const EdgeInsets.fromLTRB(0, 10, 0, 16),
+                            height: 24,
                             color: Colors.transparent,
-                            child: Center(
-                              child: Container(
-                                width: 72,
-                                height: 4.5,
-                                decoration: BoxDecoration(
-                                  color: themeColors.textSecondary.withValues(alpha: 0.35),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                              ),
-                            ),
                           ),
                         ),
                       ),
@@ -235,9 +223,10 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
   }
 }

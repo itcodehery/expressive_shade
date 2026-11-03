@@ -1,9 +1,18 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/shade_theme.dart';
 import '../providers/shade_state_provider.dart';
 import '../theme/m3_expressive_theme.dart';
+
+enum ThemeColorRole {
+  background('Background'),
+  activePill('Active Pill'),
+  inactivePill('Inactive Pill'),
+  accent('Accent');
+
+  final String label;
+  const ThemeColorRole(this.label);
+}
 
 class CustomThemeBuilderSheet extends StatefulWidget {
   const CustomThemeBuilderSheet({super.key});
@@ -22,50 +31,152 @@ class CustomThemeBuilderSheet extends StatefulWidget {
 }
 
 class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
-  late Color _selectedSeed;
+  late Color _backgroundColor;
+  late Color _activePillColor;
+  late Color _inactivePillColor;
+  late Color _accentColor;
   late bool _isAmoled;
-  late double _cardOpacity;
-  late double _blurIntensity;
+  ThemeColorRole _selectedRole = ThemeColorRole.background;
 
-  // HSV variables for full spectrum color picker
+  late TextEditingController _hexController;
   late double _currentHue;
   late double _currentSaturation;
   late double _currentValue;
 
   static const List<Color> _curatedSeedColors = [
+    Color(0xFF141416), // Dark Slate
+    Color(0xFF000000), // Pure Black
+    Color(0xFF101712), // Deep Forest
+    Color(0xFF0E1A22), // Arctic Night
+    Color(0xFF1E130B), // Sunset Dusk
+    Color(0xFF1C0E13), // Ruby Velvet
+    Color(0xFF140D24), // Cosmic Violet
     Color(0xFF2E7D32), // Forest Green
-    Color(0xFF00897B), // Mint Teal
+    Color(0xFF059669), // Emerald
     Color(0xFF0284C7), // Glacial Sky
     Color(0xFF2563EB), // Cobalt Blue
     Color(0xFF7C3AED), // Expressive Violet
-    Color(0xFFC026D3), // Fuchsia / Neon Pink
     Color(0xFFE11D48), // Rose Crimson
     Color(0xFFEA580C), // Tangelo Orange
     Color(0xFFD97706), // Warm Amber
-    Color(0xFF65A30D), // Lime Grass
-    Color(0xFF64748B), // Slate Modern
-    Color(0xFF334155), // Charcoal Deep
+    Color(0xFFFB923C), // Amber Glow
+    Color(0xFFB2DEC3), // Sage Green
+    Color(0xFF90DCF8), // Ice Cyan
+    Color(0xFFC7D2FE), // Soft Lavender
+    Color(0xFF272930), // Inactive Pill Dark
+    Color(0xFF33363E), // Inactive Pill M3
+    Color(0xFFE5E7EB), // Inactive Pill Light
+    Color(0xFFF8FAFC), // Off-white Clean
+    Color(0xFFFFFFFF), // Pure White
   ];
 
   @override
   void initState() {
     super.initState();
     final current = context.read<ShadeStateProvider>().customTheme;
-    _selectedSeed = current.primaryColor;
     _isAmoled = current.isAmoled;
-    _cardOpacity = current.cardOpacity;
-    _blurIntensity = current.blurIntensity;
+    _backgroundColor = current.customBackground ??
+        (_isAmoled ? Colors.black : const Color(0xFF141416));
+    _activePillColor = current.customActivePill ?? current.primaryColor;
+    _inactivePillColor = current.customInactivePill ?? const Color(0xFF272930);
+    _accentColor = current.customAccent ?? current.primaryColor;
 
-    final hsv = HSVColor.fromColor(_selectedSeed);
+    final hsv = HSVColor.fromColor(_backgroundColor);
     _currentHue = hsv.hue;
     _currentSaturation = hsv.saturation;
     _currentValue = hsv.value;
+    _hexController = TextEditingController(text: _colorToHex(_backgroundColor));
+  }
+
+  @override
+  void dispose() {
+    _hexController.dispose();
+    super.dispose();
+  }
+
+  Color get _currentRoleColor {
+    switch (_selectedRole) {
+      case ThemeColorRole.background:
+        return _backgroundColor;
+      case ThemeColorRole.activePill:
+        return _activePillColor;
+      case ThemeColorRole.inactivePill:
+        return _inactivePillColor;
+      case ThemeColorRole.accent:
+        return _accentColor;
+    }
+  }
+
+  void _setCurrentRoleColor(Color color) {
+    setState(() {
+      switch (_selectedRole) {
+        case ThemeColorRole.background:
+          _backgroundColor = color;
+          break;
+        case ThemeColorRole.activePill:
+          _activePillColor = color;
+          break;
+        case ThemeColorRole.inactivePill:
+          _inactivePillColor = color;
+          break;
+        case ThemeColorRole.accent:
+          _accentColor = color;
+          break;
+      }
+      final hsv = HSVColor.fromColor(color);
+      _currentHue = hsv.hue;
+      _currentSaturation = hsv.saturation;
+      _currentValue = hsv.value;
+      _hexController.text = _colorToHex(color);
+    });
+  }
+
+  void _switchRole(ThemeColorRole role) {
+    setState(() {
+      _selectedRole = role;
+      final c = _currentRoleColor;
+      final hsv = HSVColor.fromColor(c);
+      _currentHue = hsv.hue;
+      _currentSaturation = hsv.saturation;
+      _currentValue = hsv.value;
+      _hexController.text = _colorToHex(c);
+    });
   }
 
   void _updateColorFromHsv() {
+    final color = HSVColor.fromAHSV(1.0, _currentHue, _currentSaturation, _currentValue).toColor();
     setState(() {
-      _selectedSeed = HSVColor.fromAHSV(1.0, _currentHue, _currentSaturation, _currentValue).toColor();
+      switch (_selectedRole) {
+        case ThemeColorRole.background:
+          _backgroundColor = color;
+          break;
+        case ThemeColorRole.activePill:
+          _activePillColor = color;
+          break;
+        case ThemeColorRole.inactivePill:
+          _inactivePillColor = color;
+          break;
+        case ThemeColorRole.accent:
+          _accentColor = color;
+          break;
+      }
+      _hexController.text = _colorToHex(color);
     });
+  }
+
+  void _onHexSubmitted(String text) {
+    String clean = text.replaceAll('#', '').trim();
+    if (clean.length == 6) {
+      try {
+        final color = Color(int.parse('0xFF$clean'));
+        _setCurrentRoleColor(color);
+      } catch (_) {}
+    } else if (clean.length == 8) {
+      try {
+        final color = Color(int.parse('0x$clean'));
+        _setCurrentRoleColor(color);
+      } catch (_) {}
+    }
   }
 
   String _colorToHex(Color color) {
@@ -78,31 +189,26 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ShadeStateProvider>();
-    final isSystemDark = Theme.of(context).brightness == Brightness.dark;
 
     final previewTheme = CustomThemeData(
-      primaryColor: _selectedSeed,
+      primaryColor: _accentColor,
       isAmoled: _isAmoled,
-      cardOpacity: _cardOpacity,
-      blurIntensity: _blurIntensity,
+      cardOpacity: 1.0,
+      blurIntensity: 0.0,
+      customBackground: _isAmoled ? Colors.black : _backgroundColor,
+      customActivePill: _activePillColor,
+      customInactivePill: _inactivePillColor,
+      customAccent: _accentColor,
     );
-
-    final isDark = state.themeMode == ThemeMode.system
-        ? isSystemDark
-        : (state.themeMode == ThemeMode.dark);
 
     final colors = ExpressiveThemeColors.fromSettings(
       source: ThemeSource.custom,
       preset: state.selectedPreset,
       custom: previewTheme,
       systemMonetColor: state.systemMonetColor,
-      isDark: isDark,
     );
 
-    final cardGlassBg = (_isAmoled
-            ? Colors.black
-            : (colors.isDark ? const Color(0xFF1E1E24) : Colors.white))
-        .withValues(alpha: _cardOpacity);
+    final currentColor = _currentRoleColor;
 
     return Container(
       padding: EdgeInsets.only(
@@ -157,17 +263,17 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
             ),
             const SizedBox(height: 4),
             Text(
-              'Customize color accents, fine-tune card opacity, and live-preview acrylic backdrop blur.',
+              'Customize Background, Active Pill, Inactive Pill, and Accent individually with live preview.',
               style: state.selectedFont.textStyleBuilder(
                 fontSize: 13,
                 color: colors.textSecondary,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
 
-            // Realistic Live Card Preview with Wallpaper Backdrop
+            // Live Realistic Card Preview (Solid, fully opaque)
             Text(
-              'LIVE ACRYLIC CARD PREVIEW',
+              'LIVE THEME PREVIEW',
               style: state.selectedFont.textStyleBuilder(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
@@ -176,302 +282,288 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
             ),
             const SizedBox(height: 10),
 
-            // Simulated Wallpaper Box
             Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(28),
+                color: colors.background,
+                borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: colors.textSecondary.withValues(alpha: 0.2),
+                  width: 1.0,
                 ),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(28),
-                child: Stack(
-                  children: [
-                    // Underlying Colorful Simulated Wallpaper (so blur and opacity are crystal clear)
-                    Container(
-                      height: 230,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            Color(0xFF1E3A8A), // Deep Blue
-                            Color(0xFF7C3AED), // Violet
-                            Color(0xFFDB2777), // Pink
-                            Color(0xFFF59E0B), // Amber
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Row of simulated Quick Settings Pills
+                  Row(
+                    children: [
+                      // Active Pill
+                      Expanded(
+                        child: Container(
+                          height: 52,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: colors.activePill,
+                            borderRadius: BorderRadius.circular(26),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.wifi_rounded, color: colors.onActivePill, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Wi-Fi',
+                                      style: state.selectedFont.textStyleBuilder(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: colors.onActivePill,
+                                      ),
+                                    ),
+                                    Text(
+                                      'Connected',
+                                      style: state.selectedFont.textStyleBuilder(
+                                        fontSize: 10.5,
+                                        color: colors.onActivePill.withValues(alpha: 0.8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Inactive Pill
+                      Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          color: colors.inactivePill,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Icon(Icons.bluetooth_rounded, color: colors.onInactivePill, size: 22),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Simulated Notification Card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: colors.textSecondary.withValues(alpha: 0.15),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.notifications_active_rounded, size: 14, color: colors.activePill),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Expressive Preview',
+                              style: state.selectedFont.textStyleBuilder(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w600,
+                                color: colors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Individual color styling is live and responsive.',
+                          style: state.selectedFont.textStyleBuilder(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        // Action Text Button (No bg)
+                        Row(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              child: Text(
+                                'Reply',
+                                style: state.selectedFont.textStyleBuilder(
+                                  fontSize: 12.0,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.activePill,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                              child: Text(
+                                'Dismiss',
+                                style: state.selectedFont.textStyleBuilder(
+                                  fontSize: 12.0,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+
+            // Color Role Selector Tabs
+            Text(
+              'SELECT COLOR PROPERTY TO EDIT',
+              style: state.selectedFont.textStyleBuilder(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: colors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: ThemeColorRole.values.map((role) {
+                  final isSelected = _selectedRole == role;
+                  final roleColor = switch (role) {
+                    ThemeColorRole.background => _backgroundColor,
+                    ThemeColorRole.activePill => _activePillColor,
+                    ThemeColorRole.inactivePill => _inactivePillColor,
+                    ThemeColorRole.accent => _accentColor,
+                  };
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(16),
+                      onTap: () => _switchRole(role),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? colors.activePill.withValues(alpha: 0.18)
+                              : colors.surface,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isSelected ? colors.activePill : colors.textSecondary.withValues(alpha: 0.2),
+                            width: isSelected ? 1.6 : 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 14,
+                              height: 14,
+                              decoration: BoxDecoration(
+                                color: roleColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: colors.textSecondary.withValues(alpha: 0.3),
+                                  width: 1.0,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              role.label,
+                              style: state.selectedFont.textStyleBuilder(
+                                fontSize: 12.5,
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                color: isSelected ? colors.activePill : colors.textPrimary,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                      child: Stack(
-                        children: [
-                          // Abstract bokeh circles behind cards
-                          Positioned(
-                            left: 30,
-                            top: 20,
-                            child: Container(
-                              width: 120,
-                              height: 120,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.cyanAccent.withValues(alpha: 0.45),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            right: 20,
-                            bottom: 10,
-                            child: Container(
-                              width: 110,
-                              height: 110,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.amberAccent.withValues(alpha: 0.5),
-                              ),
-                            ),
-                          ),
-                          Positioned(
-                            left: 140,
-                            bottom: 30,
-                            child: Container(
-                              width: 90,
-                              height: 90,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.purpleAccent.withValues(alpha: 0.4),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
-
-                    // Translucent Tint Overlay
-                    Positioned.fill(
-                      child: Container(
-                        color: colors.background.withValues(alpha: _isAmoled ? 0.75 : 0.35),
-                      ),
-                    ),
-
-                    // Foreground Blurred Cards
-                    Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // 1. Acrylic Quick Settings Row
-                          RepaintBoundary(child: ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                sigmaX: _blurIntensity,
-                                sigmaY: _blurIntensity,
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.all(10),
-                                decoration: BoxDecoration(
-                                  color: cardGlassBg,
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    // Wide Active Pill
-                                    Expanded(
-                                      child: Container(
-                                        height: 48,
-                                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                                        decoration: BoxDecoration(
-                                          color: colors.activePill,
-                                          borderRadius: BorderRadius.circular(24),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.wifi, color: colors.onActivePill, size: 20),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Column(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    'Internet',
-                                                    style: state.selectedFont.textStyleBuilder(
-                                                      fontSize: 12,
-                                                      fontWeight: FontWeight.w700,
-                                                      color: colors.onActivePill,
-                                                    ),
-                                                  ),
-                                                  Text(
-                                                    'Connected',
-                                                    style: state.selectedFont.textStyleBuilder(
-                                                      fontSize: 10,
-                                                      color: colors.onActivePill.withValues(alpha: 0.75),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    // Inactive Squircle
-                                    Container(
-                                      width: 48,
-                                      height: 48,
-                                      decoration: BoxDecoration(
-                                        color: colors.inactivePill.withValues(alpha: _cardOpacity),
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      child: Icon(Icons.bluetooth, color: colors.onInactivePill, size: 20),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          )),
-                          const SizedBox(height: 10),
-
-                          // 2. Acrylic Notification Card
-                          RepaintBoundary(child: ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: BackdropFilter(
-                              filter: ImageFilter.blur(
-                                sigmaX: _blurIntensity,
-                                sigmaY: _blurIntensity,
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: cardGlassBg,
-                                  borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: BoxDecoration(
-                                            color: colors.activePill.withValues(alpha: 0.25),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(Icons.message_rounded, size: 12, color: colors.activePill),
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Messages • now',
-                                          style: state.selectedFont.textStyleBuilder(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w600,
-                                            color: colors.textSecondary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Hey! Check out this acrylic blur and opacity...',
-                                      style: state.selectedFont.textStyleBuilder(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: colors.textPrimary,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: colors.activePill.withValues(alpha: 0.18),
-                                            borderRadius: BorderRadius.circular(12),
-                                          ),
-                                          child: Text(
-                                            'Reply',
-                                            style: state.selectedFont.textStyleBuilder(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: colors.activePill,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          )),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                }).toList(),
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 18),
 
-            // Color Picker Section
+            // Direct Hex Code Input & Indicator
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Custom Color Spectrum',
-                  style: state.selectedFont.textStyleBuilder(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                // Hex Code Chip
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _selectedSeed.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: _selectedSeed, width: 1.5),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          color: _selectedSeed,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 6),
                       Text(
-                        _colorToHex(_selectedSeed),
+                        'Editing ${_selectedRole.label} Color',
                         style: state.selectedFont.textStyleBuilder(
-                          fontSize: 12,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                           color: colors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Type hex code or use spectrum slider below',
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 11.5,
+                          color: colors.textSecondary,
                         ),
                       ),
                     ],
                   ),
                 ),
+                // Hex Code Input Field
+                Container(
+                  width: 120,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: currentColor, width: 1.5),
+                  ),
+                  child: TextField(
+                    controller: _hexController,
+                    onChanged: _onHexSubmitted,
+                    onSubmitted: _onHexSubmitted,
+                    textAlign: TextAlign.center,
+                    style: state.selectedFont.textStyleBuilder(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
+                    decoration: const InputDecoration(
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                      isDense: true,
+                    ),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
 
-            // Hue Slider with Rainbow Track
+            // Color Spectrum Hue Slider
             Text(
               'Hue (${_currentHue.toInt()}°)',
               style: state.selectedFont.textStyleBuilder(
-                fontSize: 13,
+                fontSize: 12.5,
                 color: colors.textSecondary,
               ),
             ),
@@ -482,13 +574,13 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                 borderRadius: BorderRadius.circular(14),
                 gradient: const LinearGradient(
                   colors: [
-                    Color(0xFFFF0000), // Red
-                    Color(0xFFFFFF00), // Yellow
-                    Color(0xFF00FF00), // Green
-                    Color(0xFF00FFFF), // Cyan
-                    Color(0xFF0000FF), // Blue
-                    Color(0xFFFF00FF), // Magenta
-                    Color(0xFFFF0000), // Red
+                    Color(0xFFFF0000),
+                    Color(0xFFFFFF00),
+                    Color(0xFF00FF00),
+                    Color(0xFF00FFFF),
+                    Color(0xFF0000FF),
+                    Color(0xFFFF00FF),
+                    Color(0xFFFF0000),
                   ],
                 ),
               ),
@@ -507,237 +599,182 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                   min: 0,
                   max: 360,
                   onChanged: (val) {
-                    setState(() {
-                      _currentHue = val;
-                      _updateColorFromHsv();
-                    });
+                    _currentHue = val;
+                    _updateColorFromHsv();
                   },
                 ),
               ),
             ),
             const SizedBox(height: 12),
 
-            // Saturation & Vibrancy Slider
+            // Saturation & Brightness Sliders
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   'Saturation (${(_currentSaturation * 100).toInt()}%)',
                   style: state.selectedFont.textStyleBuilder(
-                    fontSize: 13,
+                    fontSize: 12.5,
                     color: colors.textSecondary,
                   ),
                 ),
                 Text(
                   'Brightness (${(_currentValue * 100).toInt()}%)',
                   style: state.selectedFont.textStyleBuilder(
-                    fontSize: 13,
+                    fontSize: 12.5,
                     color: colors.textSecondary,
                   ),
                 ),
               ],
             ),
-            Slider(
-              value: _currentSaturation,
-              min: 0.2,
-              max: 1.0,
-              activeColor: _selectedSeed,
-              inactiveColor: colors.sliderTrack,
-              onChanged: (val) {
-                setState(() {
-                  _currentSaturation = val;
-                  _updateColorFromHsv();
-                });
-              },
+            Row(
+              children: [
+                Expanded(
+                  child: Slider(
+                    value: _currentSaturation,
+                    min: 0.0,
+                    max: 1.0,
+                    activeColor: currentColor,
+                    inactiveColor: colors.sliderTrack,
+                    onChanged: (val) {
+                      _currentSaturation = val;
+                      _updateColorFromHsv();
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: Slider(
+                    value: _currentValue,
+                    min: 0.0,
+                    max: 1.0,
+                    activeColor: currentColor,
+                    inactiveColor: colors.sliderTrack,
+                    onChanged: (val) {
+                      _currentValue = val;
+                      _updateColorFromHsv();
+                    },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
 
-            // Curated Quick Color Chips
+            // Curated Quick Palette Swatches
             Text(
-              'Curated Presets',
+              'Quick Color Swatches',
               style: state.selectedFont.textStyleBuilder(
-                fontSize: 13,
+                fontSize: 12.5,
                 fontWeight: FontWeight.w600,
                 color: colors.textSecondary,
               ),
             ),
             const SizedBox(height: 8),
             Wrap(
-              spacing: 10,
-              runSpacing: 10,
+              spacing: 8,
+              runSpacing: 8,
               children: _curatedSeedColors.map((color) {
-                final isSelected = _selectedSeed == color;
+                final isSelected = currentColor.toARGB32() == color.toARGB32();
                 return GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _selectedSeed = color;
-                      final hsv = HSVColor.fromColor(color);
-                      _currentHue = hsv.hue;
-                      _currentSaturation = hsv.saturation;
-                      _currentValue = hsv.value;
-                    });
-                  },
+                  onTap: () => _setCurrentRoleColor(color),
                   child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 38,
-                    height: 38,
+                    duration: const Duration(milliseconds: 160),
+                    width: 32,
+                    height: 32,
                     decoration: BoxDecoration(
                       color: color,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isSelected ? colors.textPrimary : Colors.transparent,
-                        width: 2.5,
+                        color: isSelected ? colors.textPrimary : Colors.white.withValues(alpha: 0.2),
+                        width: isSelected ? 2.5 : 1.0,
                       ),
                       boxShadow: [
                         if (isSelected)
                           BoxShadow(
-                            color: color.withValues(alpha: 0.45),
-                            blurRadius: 8,
+                            color: color.withValues(alpha: 0.5),
+                            blurRadius: 6,
                             spreadRadius: 1,
                           ),
                       ],
                     ),
                     child: isSelected
-                        ? const Icon(Icons.check, color: Colors.white, size: 18)
+                        ? const Icon(Icons.check, color: Colors.white, size: 16)
                         : null,
                   ),
                 );
               }).toList(),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
-            // AMOLED Pitch-Black Toggle
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                'AMOLED Deep Black',
-                style: state.selectedFont.textStyleBuilder(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: colors.textPrimary,
-                ),
-              ),
-              subtitle: Text(
-                'Pure #000000 background for maximum OLED battery savings & deep contrast',
-                style: state.selectedFont.textStyleBuilder(
-                  fontSize: 12,
-                  color: colors.textSecondary,
-                ),
-              ),
-              value: _isAmoled,
-              activeTrackColor: colors.activePill.withValues(alpha: 0.5),
-              thumbColor: WidgetStateProperty.resolveWith((states) {
-                if (states.contains(WidgetState.selected)) {
-                  return colors.activePill;
-                }
-                return colors.inactivePill;
-              }),
-              onChanged: (val) {
-                setState(() {
-                  _isAmoled = val;
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Card Opacity Slider
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Card Opacity',
+            // AMOLED Pitch-Black Toggle (only relevant for Background)
+            if (_selectedRole == ThemeColorRole.background) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'AMOLED Deep Black',
                   style: state.selectedFont.textStyleBuilder(
-                    fontSize: 15,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w600,
                     color: colors.textPrimary,
                   ),
                 ),
-                Text(
-                  '${(_cardOpacity * 100).toInt()}%',
+                subtitle: Text(
+                  'Pure #000000 background for OLED battery savings',
                   style: state.selectedFont.textStyleBuilder(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: colors.activePill,
+                    fontSize: 11.5,
+                    color: colors.textSecondary,
                   ),
                 ),
-              ],
-            ),
-            Slider(
-              value: _cardOpacity,
-              min: 0.30,
-              max: 1.0,
-              activeColor: colors.activePill,
-              inactiveColor: colors.sliderTrack,
-              onChanged: (val) {
-                setState(() {
-                  _cardOpacity = val;
-                });
-              },
-            ),
-            const SizedBox(height: 12),
-
-            // Acrylic Blur Intensity Slider
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Acrylic Blur Intensity',
-                  style: state.selectedFont.textStyleBuilder(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                Text(
-                  '${_blurIntensity.toInt()}px',
-                  style: state.selectedFont.textStyleBuilder(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: colors.activePill,
-                  ),
-                ),
-              ],
-            ),
-            Slider(
-              value: _blurIntensity,
-              min: 0,
-              max: 40,
-              activeColor: colors.activePill,
-              inactiveColor: colors.sliderTrack,
-              onChanged: (val) {
-                setState(() {
-                  _blurIntensity = val;
-                });
-              },
-            ),
-            const SizedBox(height: 24),
+                value: _isAmoled,
+                activeTrackColor: colors.activePill.withValues(alpha: 0.5),
+                thumbColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return colors.activePill;
+                  }
+                  return colors.inactivePill;
+                }),
+                onChanged: (val) {
+                  setState(() {
+                    _isAmoled = val;
+                    if (val) {
+                      _backgroundColor = Colors.black;
+                      _setCurrentRoleColor(Colors.black);
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Apply Button
             SizedBox(
               width: double.infinity,
-              height: 54,
+              height: 52,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: colors.activePill,
                   foregroundColor: colors.onActivePill,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28),
+                    borderRadius: BorderRadius.circular(26),
                   ),
                   elevation: 0,
                 ),
                 onPressed: () {
                   state.updateCustomTheme(CustomThemeData(
-                    primaryColor: _selectedSeed,
+                    primaryColor: _accentColor,
                     isAmoled: _isAmoled,
-                    cardOpacity: _cardOpacity,
-                    blurIntensity: _blurIntensity,
+                    cardOpacity: 1.0,
+                    blurIntensity: 0.0,
+                    customBackground: _isAmoled ? Colors.black : _backgroundColor,
+                    customActivePill: _activePillColor,
+                    customInactivePill: _inactivePillColor,
+                    customAccent: _accentColor,
                   ));
                   Navigator.pop(context);
                 },
                 child: Text(
                   'Apply Custom Theme',
                   style: state.selectedFont.textStyleBuilder(
-                    fontSize: 16,
+                    fontSize: 15.5,
                     fontWeight: FontWeight.w700,
                     color: colors.onActivePill,
                   ),

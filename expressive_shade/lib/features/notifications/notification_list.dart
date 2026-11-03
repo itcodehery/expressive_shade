@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/font_config.dart';
 import '../../models/notification_model.dart';
+import '../../models/notification_style.dart';
 import '../../theme/m3_expressive_theme.dart';
 import 'notification_card.dart';
 import 'notification_group_card.dart';
@@ -14,6 +15,7 @@ class NotificationList extends StatelessWidget {
   final void Function(NotificationModel notification, NotificationAction action, String text)? onReply;
   final void Function(NotificationModel notification)? onTap;
   final void Function(NotificationModel notification)? onSnooze;
+  final NotificationStyle style;
 
   const NotificationList({
     super.key,
@@ -25,6 +27,7 @@ class NotificationList extends StatelessWidget {
     this.onReply,
     this.onTap,
     this.onSnooze,
+    this.style = NotificationStyle.android17,
   });
 
   @override
@@ -74,6 +77,7 @@ class NotificationList extends StatelessWidget {
             notifications: appNotifs,
             colors: colors,
             font: font,
+            style: style,
             onDismiss: onDismiss,
             onActionTap: onActionTap,
             onReply: onReply,
@@ -83,12 +87,14 @@ class NotificationList extends StatelessWidget {
         );
       } else {
         final notif = appNotifs.first;
+        if (notif.isGroupSummary) continue;
         children.add(
           NotificationCard(
             key: ValueKey(notif.id),
             notification: notif,
             colors: colors,
             font: font,
+            style: style,
             isFirstInGroup: true,
             isLastInGroup: true,
             groupCount: 1,
@@ -100,6 +106,32 @@ class NotificationList extends StatelessWidget {
           ),
         );
       }
+    }
+
+    if (children.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        alignment: Alignment.center,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.notifications_none_rounded,
+              size: 40,
+              color: colors.textSecondary.withValues(alpha: 0.4),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No new notifications',
+              style: font.textStyleBuilder(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: colors.textSecondary.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      );
     }
 
     return Column(

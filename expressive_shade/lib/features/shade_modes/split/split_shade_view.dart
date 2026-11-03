@@ -1,9 +1,9 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../models/font_config.dart';
 import '../../../../models/media_player_style.dart';
 import '../../../../models/notification_model.dart';
+import '../../../../models/notification_style.dart';
 import '../../../../models/qs_tile_model.dart';
 import '../../../../models/slider_style.dart';
 import '../../../../theme/m3_expressive_theme.dart';
@@ -44,6 +44,7 @@ class SplitShadeView extends StatelessWidget {
 
   // Notifications
   final List<NotificationModel> notifications;
+  final NotificationStyle notificationStyle;
   final ValueChanged<String> onDismissNotification;
   final void Function(NotificationModel, NotificationAction)? onActionTap;
   final void Function(NotificationModel, NotificationAction, String)? onReply;
@@ -78,6 +79,7 @@ class SplitShadeView extends StatelessWidget {
     required this.onSkipPrevious,
     required this.onProgressChanged,
     required this.notifications,
+    this.notificationStyle = NotificationStyle.android17,
     required this.onDismissNotification,
     this.onActionTap,
     this.onReply,
@@ -95,31 +97,34 @@ class SplitShadeView extends StatelessWidget {
             controller: pageController,
             onPageChanged: onPageChanged,
             children: [
-              // Page 0: Dedicated Notifications Sheet (Semi-transparent & Blurry)
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: Container(
-                    color: colors.surface.withValues(
-                      alpha: colors.isDark ? 0.35 : 0.50,
-                    ),
-                    child: ListView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-                      children: [
-                        NotificationList(
-                          notifications: notifications,
-                          colors: colors,
-                          font: font,
-                          onDismiss: onDismissNotification,
-                          onActionTap: onActionTap,
-                          onReply: onReply,
-                          onTap: onOpenNotification,
-                          onSnooze: onSnoozeNotification,
-                        ),
-                      ],
-                    ),
+              // Page 0: Dedicated Notifications Sheet (Follows theme with darker background and curved bottom corners)
+              Container(
+                margin: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+                decoration: BoxDecoration(
+                  color: colors.notificationContainerBackground,
+                  borderRadius: BorderRadius.circular(32),
+                  border: Border.all(
+                    color: colors.isDark
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : Colors.black.withValues(alpha: 0.06),
+                    width: 1.0,
                   ),
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+                  children: [
+                    NotificationList(
+                      notifications: notifications,
+                      colors: colors,
+                      font: font,
+                      style: notificationStyle,
+                      onDismiss: onDismissNotification,
+                      onActionTap: onActionTap,
+                      onReply: onReply,
+                      onTap: onOpenNotification,
+                      onSnooze: onSnoozeNotification,
+                    ),
+                  ],
                 ),
               ),
 

@@ -1,20 +1,13 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../models/font_config.dart';
 import '../../models/notification_model.dart';
+import '../../models/notification_style.dart';
 import '../../theme/m3_expressive_theme.dart';
 import '../../widgets/notification_channel_settings_card.dart';
 import '../../widgets/springy_dismissible_notification.dart';
 
-/// A cohesive Material 3 Expressive grouped notification container for an app.
-///
-/// Features:
-/// - One unified outer container card with smooth 24px rounded corners.
-/// - Single unified group header displaying App Icon, App Name, summary / count, and latest timestamp.
-/// - Expand / collapse animated toggle with an M3 Expressive count pill.
-/// - Clean child notification items that do not repeat the app icon or app title.
-/// - Each child notification supports individual swipe-to-dismiss, tap-to-open, and inline actions/reply.
+/// A cohesive grouped notification container for an app.
 class NotificationGroupCard extends StatefulWidget {
   final List<NotificationModel> notifications;
   final ExpressiveThemeColors colors;
@@ -24,6 +17,7 @@ class NotificationGroupCard extends StatefulWidget {
   final void Function(NotificationModel notification, NotificationAction action, String text)? onReply;
   final void Function(NotificationModel notification)? onTap;
   final void Function(NotificationModel notification)? onSnooze;
+  final NotificationStyle style;
 
   const NotificationGroupCard({
     super.key,
@@ -35,6 +29,7 @@ class NotificationGroupCard extends StatefulWidget {
     this.onReply,
     this.onTap,
     this.onSnooze,
+    this.style = NotificationStyle.android17,
   });
 
   @override
@@ -114,82 +109,116 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
         ? summaryNotif.content
         : '${effectiveChildren.length} notifications';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
+    final BorderRadius groupBorderRadius = switch (widget.style) {
+      NotificationStyle.compact => BorderRadius.circular(16),
+      NotificationStyle.oneui => BorderRadius.circular(32),
+      NotificationStyle.ios => BorderRadius.circular(20),
+      NotificationStyle.hyperOS => BorderRadius.circular(22),
+      NotificationStyle.android17 => BorderRadius.circular(24),
+    };
+
+    final Color groupCardBg = switch (widget.style) {
+      NotificationStyle.compact => colors.notificationCardBackground,
+      NotificationStyle.ios => colors.isDark
+          ? Color.alphaBlend(Colors.white.withValues(alpha: 0.05), colors.notificationCardBackground)
+          : Color.alphaBlend(Colors.black.withValues(alpha: 0.03), colors.notificationCardBackground),
+      NotificationStyle.oneui => colors.notificationCardBackground,
+      NotificationStyle.hyperOS => colors.notificationCardBackground,
+      NotificationStyle.android17 => colors.notificationCardBackground,
+    };
+
+    final groupCard = Container(
+      margin: EdgeInsets.only(bottom: widget.style == NotificationStyle.compact ? 8 : 10),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-          child: Container(
-            decoration: BoxDecoration(
-              color: colors.surface.withValues(alpha: colors.isDark ? 0.40 : 0.52),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: colors.isDark ? 0.10 : 0.40),
-                width: 1.0,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: colors.isDark ? 0.16 : 0.06),
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+        borderRadius: groupBorderRadius,
+        child: Container(
+          decoration: BoxDecoration(
+            color: groupCardBg,
+            borderRadius: groupBorderRadius,
+            border: Border.all(
+              color: colors.isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.05),
+              width: 0.8,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 1. Unified Group Header Row
-                _buildGroupHeader(
-                  primaryNotif: primaryNotif,
-                  summarySubtitle: summarySubtitle,
-                  count: effectiveChildren.length,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: colors.isDark ? 0.22 : 0.04),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 1. Unified Group Header Row
+              _buildGroupHeader(
+                primaryNotif: primaryNotif,
+                summarySubtitle: summarySubtitle,
+                count: effectiveChildren.length,
+                colors: colors,
+                font: font,
+              ),
+
+              // 2. Child Notifications Area
+              AnimatedCrossFade(
+                duration: const Duration(milliseconds: 220),
+                firstCurve: Curves.easeOutCubic,
+                secondCurve: Curves.easeInCubic,
+                crossFadeState:
+                    _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                firstChild: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (int i = 0; i < effectiveChildren.length; i++) ...[
+                      if (i > 0)
+                        Divider(
+                          height: 1,
+                          thickness: 0.8,
+                          color: colors.textSecondary.withValues(alpha: 0.12),
+                          indent: 14,
+                          endIndent: 14,
+                        ),
+                      _buildChildNotificationItem(
+                        notif: effectiveChildren[i],
+                        colors: colors,
+                        font: font,
+                      ),
+                    ],
+                  ],
+                ),
+                secondChild: _buildCollapsedPreview(
+                  latestNotif: effectiveChildren.first,
+                  remainingCount: effectiveChildren.length - 1,
                   colors: colors,
                   font: font,
                 ),
-
-                // 2. Child Notifications Area
-                AnimatedCrossFade(
-                  duration: const Duration(milliseconds: 220),
-                  firstCurve: Curves.easeOutCubic,
-                  secondCurve: Curves.easeInCubic,
-                  crossFadeState:
-                      _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-                  firstChild: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      for (int i = 0; i < effectiveChildren.length; i++) ...[
-                        if (i > 0)
-                          Divider(
-                            height: 1,
-                            thickness: 0.8,
-                            color: colors.textSecondary.withValues(alpha: 0.12),
-                            indent: 14,
-                            endIndent: 14,
-                          ),
-                        _buildChildNotificationItem(
-                          notif: effectiveChildren[i],
-                          colors: colors,
-                          font: font,
-                        ),
-                      ],
-                    ],
-                  ),
-                  secondChild: _buildCollapsedPreview(
-                    latestNotif: effectiveChildren.first,
-                    remainingCount: effectiveChildren.length - 1,
-                    colors: colors,
-                    font: font,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
+
+    if (!_isExpanded) {
+      return SpringyDismissibleNotification(
+        key: Key('group_dismiss_${primaryNotif.packageName}_${primaryNotif.groupKey}'),
+        colors: colors,
+        borderRadius: BorderRadius.circular(24),
+        margin: const EdgeInsets.only(bottom: 10),
+        onDismissed: () {
+          for (final n in widget.notifications) {
+            widget.onDismiss(n.id);
+          }
+        },
+        child: groupCard,
+      );
+    }
+
+    return groupCard;
   }
 
   Widget _buildGroupHeader({
@@ -542,24 +571,16 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
     required VoidCallback onTap,
   }) {
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
-        decoration: BoxDecoration(
-          color: colors.background.withValues(alpha: 0.75),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: colors.textSecondary.withValues(alpha: 0.16),
-            width: 0.8,
-          ),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Text(
           label,
           style: font.textStyleBuilder(
-            fontSize: 11.5,
+            fontSize: 12.0,
             fontWeight: FontWeight.w600,
-            color: colors.textPrimary,
+            color: colors.activePill,
           ),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

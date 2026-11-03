@@ -43,17 +43,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ShadeStateProvider>();
-    final isPlatformDark = Theme.of(context).brightness == Brightness.dark;
-    final isDark = state.themeMode == ThemeMode.system
-        ? isPlatformDark
-        : (state.themeMode == ThemeMode.dark);
 
     final themeColors = ExpressiveThemeColors.fromSettings(
       source: state.themeSource,
       preset: state.selectedPreset,
       custom: state.customTheme,
       systemMonetColor: state.systemMonetColor,
-      isDark: isDark,
     );
 
     return Scaffold(

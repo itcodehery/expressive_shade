@@ -7,12 +7,11 @@ import 'package:expressive_shade/theme/m3_expressive_theme.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  group('Independent Dark/Light Mode Dynamic Theming Tests', () {
-    test('Light/Dark mode is an independent option for any selected palette', () {
+  group('Theme Colors and Notification Container Tests', () {
+    test('Theme directly follows preset colors and notification area is darker than background', () {
       final state = ShadeStateProvider();
-      expect(state.isDarkMode, isTrue);
 
-      // 1. Forest Green in Dark Mode (matches refs/03_qs_dark_green_leak_alt.png)
+      // 1. Forest Green
       final forestPreset = ThemePreset.presets.firstWhere((p) => p.id == 'forest_green');
       state.selectPreset(forestPreset);
       expect(state.selectedPreset.id, 'forest_green');
@@ -21,30 +20,15 @@ void main() {
         source: state.themeSource,
         preset: state.selectedPreset,
         custom: state.customTheme,
-        isDark: state.isDarkMode,
       );
-      expect(colors.isDark, isTrue);
-      expect(colors.background, const Color(0xFF101712));
-      expect(colors.activePill, const Color(0xFFB2DEC3));
-      expect(colors.surface, const Color(0xFF1F2E23));
-
-      // 2. Toggle to Light Mode - Preset remains Forest Green!
-      state.setThemeMode(ThemeMode.light);
-      expect(state.isDarkMode, isFalse);
-      expect(state.selectedPreset.id, 'forest_green');
-
-      colors = ExpressiveThemeColors.fromSettings(
-        source: state.themeSource,
-        preset: state.selectedPreset,
-        custom: state.customTheme,
-        isDark: state.isDarkMode,
+      expect(colors.background, forestPreset.background);
+      expect(colors.activePill, forestPreset.activePill);
+      expect(
+        HSLColor.fromColor(colors.notificationContainerBackground).lightness,
+        lessThan(HSLColor.fromColor(colors.background).lightness),
       );
-      expect(colors.isDark, isFalse);
-      expect(colors.background, const Color(0xFFE2EDE5));
-      expect(colors.activePill, const Color(0xFF2B5F44));
-      expect(colors.surface, const Color(0xFFF2F7F4));
 
-      // 3. Switch to Caramel Earth in Light Mode (matches refs/04_notifications_tray_caramel.png)
+      // 2. Caramel Earth
       final caramelPreset = ThemePreset.presets.firstWhere((p) => p.id == 'caramel_earth');
       state.selectPreset(caramelPreset);
       expect(state.selectedPreset.id, 'caramel_earth');
@@ -53,42 +37,51 @@ void main() {
         source: state.themeSource,
         preset: state.selectedPreset,
         custom: state.customTheme,
-        isDark: state.isDarkMode,
       );
-      expect(colors.isDark, isFalse);
-      expect(colors.background, const Color(0xFFE8D4C1));
-      expect(colors.activePill, const Color(0xFFA65C23));
-      expect(colors.surface, const Color(0xFFF7EFE7));
+      expect(colors.background, caramelPreset.background);
+      expect(colors.activePill, caramelPreset.activePill);
+      expect(
+        HSLColor.fromColor(colors.notificationContainerBackground).lightness,
+        lessThan(HSLColor.fromColor(colors.background).lightness),
+      );
 
-      // 4. Switch to Dark Mode with Caramel Earth - Preset remains Caramel Earth!
-      state.setThemeMode(ThemeMode.dark);
-      expect(state.isDarkMode, isTrue);
-      expect(state.selectedPreset.id, 'caramel_earth');
+      // 3. Lavender Mist
+      final lavenderPreset = ThemePreset.presets.firstWhere((p) => p.id == 'lavender_mist');
+      state.selectPreset(lavenderPreset);
+      expect(state.selectedPreset.id, 'lavender_mist');
 
       colors = ExpressiveThemeColors.fromSettings(
         source: state.themeSource,
         preset: state.selectedPreset,
         custom: state.customTheme,
-        isDark: state.isDarkMode,
       );
-      expect(colors.isDark, isTrue);
-      expect(colors.background, const Color(0xFF201712));
-      expect(colors.activePill, const Color(0xFFF7CBA0));
-    });
+      expect(colors.background, lavenderPreset.background);
+      expect(
+        HSLColor.fromColor(colors.notificationContainerBackground).lightness,
+        lessThan(HSLColor.fromColor(colors.background).lightness),
+      );
 
-    test('toggleDarkLightMode alternates without changing active palette', () {
-      final state = ShadeStateProvider();
-      final skyPreset = ThemePreset.presets.firstWhere((p) => p.id == 'sky_cyan');
-      state.selectPreset(skyPreset);
-      expect(state.selectedPreset.id, 'sky_cyan');
+      // 4. Custom Theme directly follows individual user colors
+      state.updateCustomTheme(const CustomThemeData(
+        customBackground: Color(0xFF1E1E2E),
+        customActivePill: Color(0xFFCBA6F7),
+        customInactivePill: Color(0xFF313244),
+        customAccent: Color(0xFFF38BA8),
+      ));
 
-      state.toggleDarkLightMode();
-      expect(state.isDarkMode, isFalse);
-      expect(state.selectedPreset.id, 'sky_cyan');
-
-      state.toggleDarkLightMode();
-      expect(state.isDarkMode, isTrue);
-      expect(state.selectedPreset.id, 'sky_cyan');
+      colors = ExpressiveThemeColors.fromSettings(
+        source: state.themeSource,
+        preset: state.selectedPreset,
+        custom: state.customTheme,
+      );
+      expect(colors.background, const Color(0xFF1E1E2E));
+      expect(colors.activePill, const Color(0xFFCBA6F7));
+      expect(colors.inactivePill, const Color(0xFF313244));
+      expect(colors.sliderProgress, const Color(0xFFF38BA8));
+      expect(
+        HSLColor.fromColor(colors.notificationContainerBackground).lightness,
+        lessThan(HSLColor.fromColor(colors.background).lightness),
+      );
     });
   });
 }

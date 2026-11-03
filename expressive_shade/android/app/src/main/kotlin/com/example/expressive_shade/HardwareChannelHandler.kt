@@ -48,7 +48,7 @@ class HardwareChannelHandler(
             )
             "toggleDataSaver", "openDataSaverSettings" -> open(
                 result,
-                { Intent(Settings.ACTION_DATA_SAVER_SETTINGS) },
+                { Intent("android.settings.DATA_SAVER_SETTINGS") },
                 { Intent(Settings.ACTION_WIRELESS_SETTINGS) }
             )
             "toggleExtraDim", "openExtraDimSettings" -> toggleExtraDim(result)

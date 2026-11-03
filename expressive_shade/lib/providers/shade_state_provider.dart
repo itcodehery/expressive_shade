@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../models/font_config.dart';
 import '../models/media_player_style.dart';
 import '../models/notification_model.dart';
+import '../models/notification_style.dart';
 import '../models/qs_tile_model.dart';
 import '../models/shade_mode.dart';
 import '../models/shade_theme.dart';
@@ -97,6 +98,13 @@ class ShadeStateProvider extends ChangeNotifier {
         orElse: () => MediaPlayerStyle.expressiveWave,
       );
     }
+    if (s['notificationStyle'] != null) {
+      final ns = s['notificationStyle'].toString();
+      _notificationStyle = NotificationStyle.values.firstWhere(
+        (e) => e.name == ns,
+        orElse: () => NotificationStyle.android17,
+      );
+    }
     if (s['themeMode'] != null) {
       final modeStr = s['themeMode'].toString();
       if (modeStr == 'light') {
@@ -132,9 +140,21 @@ class ShadeStateProvider extends ChangeNotifier {
       _customTheme = CustomThemeData(
         primaryColor: Color(colorVal),
         isAmoled: s['customTheme_isAmoled'] == true,
-        cardOpacity: (s['customTheme_cardOpacity'] as num?)?.toDouble() ?? 0.95,
+        cardOpacity: (s['customTheme_cardOpacity'] as num?)?.toDouble() ?? 1.0,
         blurIntensity:
-            (s['customTheme_blurIntensity'] as num?)?.toDouble() ?? 20.0,
+            (s['customTheme_blurIntensity'] as num?)?.toDouble() ?? 0.0,
+        customBackground: s['customTheme_customBackground'] != null
+            ? Color((s['customTheme_customBackground'] as num).toInt())
+            : null,
+        customActivePill: s['customTheme_customActivePill'] != null
+            ? Color((s['customTheme_customActivePill'] as num).toInt())
+            : null,
+        customInactivePill: s['customTheme_customInactivePill'] != null
+            ? Color((s['customTheme_customInactivePill'] as num).toInt())
+            : null,
+        customAccent: s['customTheme_customAccent'] != null
+            ? Color((s['customTheme_customAccent'] as num).toInt())
+            : null,
       );
     }
     if (s['selectedFont'] != null) {
@@ -224,6 +244,9 @@ class ShadeStateProvider extends ChangeNotifier {
     if (dirty.contains('mediaPlayerStyle')) {
       map['mediaPlayerStyle'] = _mediaPlayerStyle.name;
     }
+    if (dirty.contains('notificationStyle')) {
+      map['notificationStyle'] = _notificationStyle.name;
+    }
     if (dirty.contains('themeMode')) {
       map['themeMode'] = _themeMode == ThemeMode.light
           ? 'light'
@@ -242,6 +265,22 @@ class ShadeStateProvider extends ChangeNotifier {
       map['customTheme_isAmoled'] = _customTheme.isAmoled;
       map['customTheme_cardOpacity'] = _customTheme.cardOpacity;
       map['customTheme_blurIntensity'] = _customTheme.blurIntensity;
+      if (_customTheme.customBackground != null) {
+        map['customTheme_customBackground'] =
+            _customTheme.customBackground!.toARGB32();
+      }
+      if (_customTheme.customActivePill != null) {
+        map['customTheme_customActivePill'] =
+            _customTheme.customActivePill!.toARGB32();
+      }
+      if (_customTheme.customInactivePill != null) {
+        map['customTheme_customInactivePill'] =
+            _customTheme.customInactivePill!.toARGB32();
+      }
+      if (_customTheme.customAccent != null) {
+        map['customTheme_customAccent'] =
+            _customTheme.customAccent!.toARGB32();
+      }
     }
     if (dirty.contains('selectedFont')) {
       map['selectedFont'] = _selectedFont.id;
@@ -313,6 +352,16 @@ class ShadeStateProvider extends ChangeNotifier {
   void setMediaPlayerStyle(MediaPlayerStyle style) {
     _mediaPlayerStyle = style;
     _scheduleSave({'mediaPlayerStyle'});
+    notifyListeners();
+  }
+
+  // Notification Card Style
+  NotificationStyle _notificationStyle = NotificationStyle.android17;
+  NotificationStyle get notificationStyle => _notificationStyle;
+
+  void setNotificationStyle(NotificationStyle style) {
+    _notificationStyle = style;
+    _scheduleSave({'notificationStyle'});
     notifyListeners();
   }
 

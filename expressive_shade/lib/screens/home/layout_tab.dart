@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../models/font_config.dart';
+import '../../models/media_player_style.dart';
+import '../../models/notification_model.dart';
+import '../../models/notification_style.dart';
 import '../../models/qs_tile_model.dart';
 import '../../models/shade_mode.dart';
-import '../../models/media_player_style.dart';
 import '../../models/slider_style.dart';
 import '../../providers/shade_state_provider.dart';
 import '../../theme/m3_expressive_theme.dart';
+import '../../features/notifications/notification_card.dart';
 import '../../widgets/expressive_media_card.dart';
 import '../../widgets/expressive_slider.dart';
 
@@ -465,6 +468,159 @@ class LayoutTab extends StatelessWidget {
                         style: style,
                         onPlayPause: () {},
                         onProgressChanged: (_) {},
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 28),
+
+        Text(
+          'Notification Card Style',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Customize your notification appearance: Android 17 Expressive, iOS Notification Center, Samsung OneUI Stadium, Compact Mode (swipe right for actions), or HyperOS Floating Pill.',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 14,
+            color: colors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 20),
+
+        ...NotificationStyle.values.map((style) {
+          final isSelected = state.notificationStyle == style;
+          final sampleNotif = NotificationModel(
+            id: 'preview_${style.name}',
+            packageName: 'com.google.android.apps.messaging',
+            appName: 'Messages',
+            title: 'Tim Cook',
+            content: 'Hey! Look at this notification styling preview. It looks clean and tactile!',
+            timeAgo: '2m ago',
+            appIcon: Icons.chat_bubble_rounded,
+            appColor: const Color(0xFF2563EB),
+            actions: const [
+              NotificationAction(index: 0, title: 'Reply', hasRemoteInput: true),
+              NotificationAction(index: 1, title: 'Mark as read', hasRemoteInput: false),
+            ],
+          );
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 20),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(28),
+              onTap: () {
+                HapticFeedback.selectionClick();
+                state.setNotificationStyle(style);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? colors.activePill.withValues(alpha: 0.12)
+                      : colors.surface,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: isSelected ? colors.activePill : Colors.transparent,
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? colors.activePill
+                                : colors.inactivePill,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.notifications_active_rounded,
+                              size: 24,
+                              color: isSelected
+                                  ? colors.onActivePill
+                                  : colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                style.displayName,
+                                style: state.selectedFont.textStyleBuilder(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                style.description,
+                                style: state.selectedFont.textStyleBuilder(
+                                  fontSize: 12.5,
+                                  color: colors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected
+                                ? colors.activePill
+                                : Colors.transparent,
+                            border: Border.all(
+                              color: isSelected
+                                  ? colors.activePill
+                                  : colors.textSecondary.withValues(alpha: 0.5),
+                              width: 2,
+                            ),
+                          ),
+                          child: isSelected
+                              ? Center(
+                                  child: Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: colors.onActivePill,
+                                    ),
+                                  ),
+                                )
+                              : null,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    // Live realistic preview of this notification style
+                    IgnorePointer(
+                      child: NotificationCard(
+                        notification: sampleNotif,
+                        colors: colors,
+                        font: state.selectedFont,
+                        style: style,
+                        onDismiss: () {},
                       ),
                     ),
                   ],

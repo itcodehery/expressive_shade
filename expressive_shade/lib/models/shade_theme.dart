@@ -106,6 +106,76 @@ class ThemePreset {
       sliderThumb: Color(0xFFDDD6FE),
       isDark: true,
     ),
+    ThemePreset(
+      id: 'sunset_amber',
+      name: 'Sunset Amber',
+      description: 'Vibrant sunset orange and warm radiant amber glow',
+      primarySeed: Color(0xFFEA580C),
+      background: Color(0xFF1E130B),
+      activePill: Color(0xFFFB923C),
+      onActivePill: Color(0xFF431407),
+      inactivePill: Color(0xFF332015),
+      onInactivePill: Color(0xFFFED7AA),
+      sliderTrack: Color(0xFF332015),
+      sliderThumb: Color(0xFFFB923C),
+      isDark: true,
+    ),
+    ThemePreset(
+      id: 'crimson_ruby',
+      name: 'Crimson Ruby',
+      description: 'Deep velvet ruby and expressive rose quartz tones',
+      primarySeed: Color(0xFFE11D48),
+      background: Color(0xFF1C0E13),
+      activePill: Color(0xFFFDA4AF),
+      onActivePill: Color(0xFF4C0519),
+      inactivePill: Color(0xFF341722),
+      onInactivePill: Color(0xFFFECDD3),
+      sliderTrack: Color(0xFF341722),
+      sliderThumb: Color(0xFFFDA4AF),
+      isDark: true,
+    ),
+    ThemePreset(
+      id: 'electric_violet',
+      name: 'Electric Violet',
+      description: 'High-voltage ultraviolet and deep cosmic neon dusk',
+      primarySeed: Color(0xFF7C3AED),
+      background: Color(0xFF140D24),
+      activePill: Color(0xFFC4B5FD),
+      onActivePill: Color(0xFF2E1065),
+      inactivePill: Color(0xFF281C40),
+      onInactivePill: Color(0xFFEDE9FE),
+      sliderTrack: Color(0xFF281C40),
+      sliderThumb: Color(0xFFC4B5FD),
+      isDark: true,
+    ),
+    ThemePreset(
+      id: 'midnight_navy',
+      name: 'Midnight Navy',
+      description: 'Deep oceanic navy and ice blue high-contrast accents',
+      primarySeed: Color(0xFF1D4ED8),
+      background: Color(0xFF0B132B),
+      activePill: Color(0xFF93C5FD),
+      onActivePill: Color(0xFF172554),
+      inactivePill: Color(0xFF1E293B),
+      onInactivePill: Color(0xFFDBEAFE),
+      sliderTrack: Color(0xFF1E293B),
+      sliderThumb: Color(0xFF93C5FD),
+      isDark: true,
+    ),
+    ThemePreset(
+      id: 'emerald_botanical',
+      name: 'Emerald Botanical',
+      description: 'Lush vibrant emerald and crisp mint jade highlights',
+      primarySeed: Color(0xFF059669),
+      background: Color(0xFF061A14),
+      activePill: Color(0xFF6EE7B7),
+      onActivePill: Color(0xFF022C22),
+      inactivePill: Color(0xFF133328),
+      onInactivePill: Color(0xFFD1FAE5),
+      sliderTrack: Color(0xFF133328),
+      sliderThumb: Color(0xFF6EE7B7),
+      isDark: true,
+    ),
   ];
 }
 
@@ -114,12 +184,20 @@ class CustomThemeData {
   final bool isAmoled;
   final double cardOpacity;
   final double blurIntensity;
+  final Color? customBackground;
+  final Color? customActivePill;
+  final Color? customInactivePill;
+  final Color? customAccent;
 
   const CustomThemeData({
     this.primaryColor = const Color(0xFF2E7D32),
     this.isAmoled = false,
-    this.cardOpacity = 0.95,
-    this.blurIntensity = 20.0,
+    this.cardOpacity = 1.0,
+    this.blurIntensity = 0.0,
+    this.customBackground,
+    this.customActivePill,
+    this.customInactivePill,
+    this.customAccent,
   });
 
   CustomThemeData copyWith({
@@ -127,12 +205,20 @@ class CustomThemeData {
     bool? isAmoled,
     double? cardOpacity,
     double? blurIntensity,
+    Color? customBackground,
+    Color? customActivePill,
+    Color? customInactivePill,
+    Color? customAccent,
   }) {
     return CustomThemeData(
       primaryColor: primaryColor ?? this.primaryColor,
       isAmoled: isAmoled ?? this.isAmoled,
       cardOpacity: cardOpacity ?? this.cardOpacity,
       blurIntensity: blurIntensity ?? this.blurIntensity,
+      customBackground: customBackground ?? this.customBackground,
+      customActivePill: customActivePill ?? this.customActivePill,
+      customInactivePill: customInactivePill ?? this.customInactivePill,
+      customAccent: customAccent ?? this.customAccent,
     );
   }
 }

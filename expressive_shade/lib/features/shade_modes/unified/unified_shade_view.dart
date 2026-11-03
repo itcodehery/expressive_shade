@@ -1,8 +1,8 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../../../models/font_config.dart';
 import '../../../../models/media_player_style.dart';
 import '../../../../models/notification_model.dart';
+import '../../../../models/notification_style.dart';
 import '../../../../models/qs_tile_model.dart';
 import '../../../../models/shade_theme.dart';
 import '../../../../models/slider_style.dart';
@@ -48,6 +48,7 @@ class UnifiedShadeView extends StatelessWidget {
 
   // Notifications
   final List<NotificationModel> notifications;
+  final NotificationStyle notificationStyle;
   final ValueChanged<String> onDismissNotification;
   final void Function(NotificationModel, NotificationAction)? onActionTap;
   final void Function(NotificationModel, NotificationAction, String)? onReply;
@@ -85,6 +86,7 @@ class UnifiedShadeView extends StatelessWidget {
     required this.onSkipPrevious,
     required this.onProgressChanged,
     required this.notifications,
+    this.notificationStyle = NotificationStyle.android17,
     required this.onDismissNotification,
     this.onActionTap,
     this.onReply,
@@ -310,47 +312,31 @@ class UnifiedShadeView extends StatelessWidget {
   }
 
   Widget _buildNotificationsContainer(BuildContext context) {
-    final blurSigma = customTheme.blurIntensity.clamp(10.0, 30.0);
-    final containerBg = colors.surface.withValues(
-      alpha: colors.isDark ? 0.35 : 0.50,
-    );
-    final screenHeight = MediaQuery.sizeOf(context).height;
+    final containerBg = colors.notificationContainerBackground;
 
-    return ClipRRect(
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
-      child: ValueListenableBuilder<bool>(
-        valueListenable: reduceBlur,
-        builder: (context, reduce, child) {
-          final sigma = reduce ? blurSigma * 0.4 : blurSigma;
-          return BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-            child: child,
-          );
-        },
-        child: Container(
-          constraints: BoxConstraints(minHeight: screenHeight + 200),
-          decoration: BoxDecoration(
-            color: containerBg,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(36)),
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: colors.isDark ? 0.15 : 0.40),
-                width: 1.0,
-              ),
-            ),
-          ),
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
-          child: NotificationList(
-            notifications: notifications,
-            colors: colors,
-            font: font,
-            onDismiss: onDismissNotification,
-            onActionTap: onActionTap,
-            onReply: onReply,
-            onTap: onOpenNotification,
-            onSnooze: onSnoozeNotification,
-          ),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 28),
+      decoration: BoxDecoration(
+        color: containerBg,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(
+          color: colors.isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : Colors.black.withValues(alpha: 0.06),
+          width: 1.0,
         ),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
+      child: NotificationList(
+        notifications: notifications,
+        colors: colors,
+        font: font,
+        style: notificationStyle,
+        onDismiss: onDismissNotification,
+        onActionTap: onActionTap,
+        onReply: onReply,
+        onTap: onOpenNotification,
+        onSnooze: onSnoozeNotification,
       ),
     );
   }

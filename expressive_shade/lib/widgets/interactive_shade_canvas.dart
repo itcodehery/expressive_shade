@@ -57,6 +57,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
   bool _dragStartExpanded = false;
   _DragAction _activeDragAction = _DragAction.none;
   VelocityTracker? _notifVelocityTracker;
+  double _bottomOverscrollAccumulator = 0.0;
 
   @override
   void initState() {
@@ -162,12 +163,14 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
 
     final showStandardHeader = state.shadeMode != ShadeMode.smart;
 
-    final mainContent = Container(
-      color: Colors.transparent,
-      child: SafeArea(
-        top: false,
-        bottom: true,
-        child: Column(
+    final mainContent = ClipRRect(
+      borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
+      child: Container(
+        color: colors.background,
+        child: SafeArea(
+          top: false,
+          bottom: true,
+          child: Column(
           children: [
             if (showStandardHeader) ...[
               // Status Bar & System Header (Completely Opaque Top Section)
@@ -270,10 +273,25 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           onSkipPrevious: () => state.skipPreviousMedia(),
                           onProgressChanged: (v) => state.setMediaProgress(v),
                           notifications: state.notifications,
+                          notificationStyle: state.notificationStyle,
                           onDismissNotification: (id) =>
                               state.dismissNotification(id),
-                          onOpenNotification: (notif) =>
-                              state.openNotification(notif),
+                          onActionTap: (notif, action) =>
+                              state.performNotificationAction(notif, action),
+                          onReply: (notif, action, text) =>
+                              state.performNotificationAction(notif, action,
+                                  replyText: text),
+                          onSnoozeNotification: (notif) =>
+                              state.snoozeNotification(
+                                  notif.id, duration: const Duration(hours: 1)),
+                          onOpenNotification: (notif) {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotification(notif));
+                            } else {
+                              state.openNotification(notif);
+                            }
+                          },
                         ),
                       ShadeMode.unified => UnifiedShadeView(
                           scrollController: _unifiedScrollController,
@@ -308,10 +326,25 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           onSkipPrevious: () => state.skipPreviousMedia(),
                           onProgressChanged: (v) => state.setMediaProgress(v),
                           notifications: state.notifications,
+                          notificationStyle: state.notificationStyle,
                           onDismissNotification: (id) =>
                               state.dismissNotification(id),
-                          onOpenNotification: (notif) =>
-                              state.openNotification(notif),
+                          onActionTap: (notif, action) =>
+                              state.performNotificationAction(notif, action),
+                          onReply: (notif, action, text) =>
+                              state.performNotificationAction(notif, action,
+                                  replyText: text),
+                          onSnoozeNotification: (notif) =>
+                              state.snoozeNotification(
+                                  notif.id, duration: const Duration(hours: 1)),
+                          onOpenNotification: (notif) {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotification(notif));
+                            } else {
+                              state.openNotification(notif);
+                            }
+                          },
                         ),
                       ShadeMode.smart => CompactMatrixView(
                           batteryLevel: state.batteryLevel,
@@ -320,6 +353,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           font: state.selectedFont,
                           tiles: state.tiles,
                           notifications: state.notifications,
+                          notificationStyle: state.notificationStyle,
                           isExpanded: state.isUnifiedQsExpanded,
                           bouncyAnimation: _bouncyCurveAnimation,
                           isUnorganized: _isSmartUnorganized,
@@ -336,11 +370,32 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           onToggleOrganize: () => setState(
                               () => _isSmartUnorganized = !_isSmartUnorganized),
                           onClearAll: () => state.clearAllNotifications(),
-                          onOpenHistory: () => state.openNotificationHistory(),
+                          onOpenHistory: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotificationHistory());
+                            } else {
+                              state.openNotificationHistory();
+                            }
+                          },
                           onDismissNotification: (id) =>
                               state.dismissNotification(id),
-                          onOpenNotification: (notif) =>
-                              state.openNotification(notif),
+                          onActionTap: (notif, action) =>
+                              state.performNotificationAction(notif, action),
+                          onReply: (notif, action, text) =>
+                              state.performNotificationAction(notif, action,
+                                  replyText: text),
+                          onSnoozeNotification: (notif) =>
+                              state.snoozeNotification(
+                                  notif.id, duration: const Duration(hours: 1)),
+                          onOpenNotification: (notif) {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotification(notif));
+                            } else {
+                              state.openNotification(notif);
+                            }
+                          },
                           impulseNotifier: _tileImpulseNotifier,
                           scrollController: _unifiedScrollController,
                         ),
@@ -349,6 +404,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           ],
         ),
       ),
+    ),
     );
 
     return _wrapWithNotificationsDragToClose(mainContent);
@@ -463,7 +519,11 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
           const SizedBox(width: 8),
           _buildCircleHeaderBtn(Icons.settings_rounded, colors, () {
             HapticFeedback.lightImpact();
-            state.openSettings();
+            if (widget.onDismissAndExecute != null) {
+              widget.onDismissAndExecute!(() => state.openSettings());
+            } else {
+              state.openSettings();
+            }
           }),
           const SizedBox(width: 8),
           _buildCircleHeaderBtn(Icons.power_settings_new_rounded, colors, () {
@@ -566,163 +626,210 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     );
   }
 
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (_isEditMode) return false;
+    final state = context.read<ShadeStateProvider>();
+
+    // For Unified and Smart (Compact Matrix), when expanded, pointer listener handles collapsing QS
+    if ((state.shadeMode == ShadeMode.unified || state.shadeMode == ShadeMode.smart) &&
+        state.isUnifiedQsExpanded) {
+      return false;
+    }
+
+    // For Split mode, only listen on notifications page (index 0)
+    if (state.shadeMode == ShadeMode.split && state.splitTabIndex != 0) {
+      return false;
+    }
+
+    if (notification is OverscrollNotification) {
+      // In Flutter vertical scrolling, overscroll > 0 indicates pulling up past the bottom (maxScrollExtent)
+      if (notification.overscroll > 0) {
+        _bottomOverscrollAccumulator += notification.overscroll;
+        final screenHeight = MediaQuery.of(context).size.height;
+        widget.onDragShadeUpdate?.call(-notification.overscroll / screenHeight);
+      }
+    } else if (notification is ScrollEndNotification) {
+      final metrics = notification.metrics;
+      final velocity = notification.dragDetails?.primaryVelocity ?? 0.0;
+      final isAtBottom = metrics.pixels >= metrics.maxScrollExtent - 4.0;
+
+      if (_bottomOverscrollAccumulator > 18.0 || (isAtBottom && velocity < -120)) {
+        widget.onDragShadeEnd?.call(velocity < 0 ? velocity : -350.0);
+      } else if (_bottomOverscrollAccumulator > 0) {
+        widget.onDragShadeEnd?.call(0.0);
+      }
+      _bottomOverscrollAccumulator = 0.0;
+    }
+    return false;
+  }
+
   Widget _wrapWithNotificationsDragToClose(Widget child) {
-    return Listener(
-      behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        _notifVelocityTracker = VelocityTracker.withKind(
-          PointerDeviceKind.touch,
-        );
-        _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
-        _notifPointerStartX = event.position.dx;
-        _notifPointerStartY = event.position.dy;
-        _notifLastPointerY = event.position.dy;
-        _activeDragAction = _DragAction.none;
-        final state = context.read<ShadeStateProvider>();
-        _dragStartExpanded =
-            state.isUnifiedQsExpanded || _qsBouncyController.value > 0.5;
-      },
-      onPointerMove: (event) {
-        _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
-        final currentY = event.position.dy;
-        final currentX = event.position.dx;
-        final deltaY = currentY - _notifLastPointerY;
-        _notifLastPointerY = currentY;
-        final totalDeltaX = currentX - _notifPointerStartX;
-        final totalDeltaY = currentY - _notifPointerStartY;
+    return NotificationListener<ScrollNotification>(
+      onNotification: _handleScrollNotification,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (event) {
+          _notifVelocityTracker = VelocityTracker.withKind(
+            PointerDeviceKind.touch,
+          );
+          _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
+          _notifPointerStartX = event.position.dx;
+          _notifPointerStartY = event.position.dy;
+          _notifLastPointerY = event.position.dy;
+          _activeDragAction = _DragAction.none;
+          final state = context.read<ShadeStateProvider>();
+          _dragStartExpanded =
+              state.isUnifiedQsExpanded || _qsBouncyController.value > 0.5;
+        },
+        onPointerMove: (event) {
+          _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
+          final currentY = event.position.dy;
+          final currentX = event.position.dx;
+          final deltaY = currentY - _notifLastPointerY;
+          _notifLastPointerY = currentY;
+          final totalDeltaX = currentX - _notifPointerStartX;
+          final totalDeltaY = currentY - _notifPointerStartY;
 
-        if (_isEditMode || _activeDragAction == _DragAction.ignored) return;
+          if (_isEditMode || _activeDragAction == _DragAction.ignored) return;
 
-        final state = context.read<ShadeStateProvider>();
-        final isUnifiedOrMatrix = state.shadeMode == ShadeMode.unified ||
-            state.shadeMode == ShadeMode.smart;
+          final state = context.read<ShadeStateProvider>();
+          final isUnifiedOrMatrix = state.shadeMode == ShadeMode.unified ||
+              state.shadeMode == ShadeMode.smart;
 
-        final isScrolledDown = _unifiedScrollController.hasClients &&
-            _unifiedScrollController.offset > 8.0;
+          final isAtTop = !_unifiedScrollController.hasClients ||
+              _unifiedScrollController.offset <= 4.0;
+          final isAtBottom = !_unifiedScrollController.hasClients ||
+              _unifiedScrollController.offset >=
+                  _unifiedScrollController.position.maxScrollExtent - 4.0;
 
-        if (_activeDragAction == _DragAction.none) {
-          if (totalDeltaX.abs() > 10.0 && totalDeltaX.abs() > totalDeltaY.abs()) {
-            _activeDragAction = _DragAction.ignored;
-            return;
-          }
+          if (_activeDragAction == _DragAction.none) {
+            if (totalDeltaX.abs() > 10.0 && totalDeltaX.abs() > totalDeltaY.abs()) {
+              _activeDragAction = _DragAction.ignored;
+              return;
+            }
 
-          if (totalDeltaY.abs() > 14.0 &&
-              totalDeltaY.abs() > totalDeltaX.abs() * 1.3) {
-            if (isUnifiedOrMatrix) {
-              if (_dragStartExpanded) {
-                if (totalDeltaY < -14.0 && !isScrolledDown) {
-                  _activeDragAction = _DragAction.collapsingQs;
+            if (totalDeltaY.abs() > 12.0 &&
+                totalDeltaY.abs() > totalDeltaX.abs() * 1.2) {
+              if (isUnifiedOrMatrix) {
+                if (_dragStartExpanded) {
+                  // Expanded QS: swiping up anywhere collapses back to normal shade
+                  if (totalDeltaY < -12.0) {
+                    _activeDragAction = _DragAction.collapsingQs;
+                  }
+                } else {
+                  // Normal shade: swiping down anywhere expands the shade
+                  if (totalDeltaY > 12.0 && isAtTop) {
+                    _activeDragAction = _DragAction.expandingQs;
+                  } else if (totalDeltaY < -14.0 && isAtBottom) {
+                    // Normal shade: swiping up when at bottom collapses the whole shade
+                    _activeDragAction = _DragAction.dismissingShade;
+                  }
                 }
               } else {
-                if (totalDeltaY > 14.0 && !isScrolledDown) {
-                  _activeDragAction = _DragAction.expandingQs;
-                } else if (totalDeltaY < -16.0 && !isScrolledDown) {
+                // Split shade
+                if (totalDeltaY < -16.0 && isAtBottom) {
                   _activeDragAction = _DragAction.dismissingShade;
                 }
               }
-            } else {
-              if (totalDeltaY < -18.0 && !isScrolledDown) {
-                _activeDragAction = _DragAction.dismissingShade;
-              }
             }
           }
-        }
 
-        if (_activeDragAction != _DragAction.none &&
-            _activeDragAction != _DragAction.ignored) {
-          if (_unifiedScrollController.hasClients &&
-              _unifiedScrollController.offset != 0.0) {
-            _unifiedScrollController.jumpTo(0.0);
+          if (_activeDragAction == _DragAction.expandingQs ||
+              _activeDragAction == _DragAction.collapsingQs) {
+            final progressDelta = deltaY / 220.0;
+            _qsBouncyController.value =
+                (_qsBouncyController.value + progressDelta).clamp(0.0, 1.0);
+          } else if (_activeDragAction == _DragAction.dismissingShade) {
+            widget.onDragShadeUpdate?.call(deltaY);
+          } else if (!_dragStartExpanded && totalDeltaY < 0 && !isAtBottom) {
+            // If pointer started on non-scrollable header area, forward upward drag to scroll list
+            if (_unifiedScrollController.hasClients && event.position.dy < 240) {
+              final newOffset = (_unifiedScrollController.offset - deltaY).clamp(
+                0.0,
+                _unifiedScrollController.position.maxScrollExtent,
+              );
+              _unifiedScrollController.jumpTo(newOffset);
+            }
           }
-        }
-
-        if (_activeDragAction == _DragAction.expandingQs ||
-            _activeDragAction == _DragAction.collapsingQs) {
-          final progressDelta = deltaY / 220.0;
-          _qsBouncyController.value =
-              (_qsBouncyController.value + progressDelta).clamp(0.0, 1.0);
-        } else if (_activeDragAction == _DragAction.dismissingShade) {
-          _reduceBlur.value = true;
-          widget.onDragShadeUpdate?.call(deltaY);
-        }
-      },
-      onPointerUp: (event) {
-        _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
-        final velocity =
-            _notifVelocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
-        final state = context.read<ShadeStateProvider>();
-
-        if (_activeDragAction == _DragAction.expandingQs) {
-          if (velocity > 120 || _qsBouncyController.value > 0.30) {
-            HapticFeedback.lightImpact();
-            _qsBouncyController.animateTo(
-              1.0,
-              curve: Curves.easeOutCubic,
-              duration: const Duration(milliseconds: 220),
-            );
-            state.setUnifiedQsExpanded(true);
-          } else {
-            HapticFeedback.lightImpact();
-            _qsBouncyController.animateTo(
-              0.0,
-              curve: Curves.easeInCubic,
-              duration: const Duration(milliseconds: 180),
-            );
-            state.setUnifiedQsExpanded(false);
-          }
-        } else if (_activeDragAction == _DragAction.collapsingQs) {
-          if (velocity < -120 || _qsBouncyController.value < 0.70) {
-            HapticFeedback.lightImpact();
-            _qsBouncyController.animateTo(
-              0.0,
-              curve: Curves.easeInCubic,
-              duration: const Duration(milliseconds: 200),
-            );
-            state.setUnifiedQsExpanded(false);
-          } else {
-            HapticFeedback.lightImpact();
-            _qsBouncyController.animateTo(
-              1.0,
-              curve: Curves.easeOutCubic,
-              duration: const Duration(milliseconds: 200),
-            );
-            state.setUnifiedQsExpanded(true);
-          }
-        } else if (_activeDragAction == _DragAction.dismissingShade) {
-          _reduceBlur.value = false;
-          widget.onDragShadeEnd?.call(velocity);
-        }
-
-        _activeDragAction = _DragAction.none;
-        _notifVelocityTracker = null;
-      },
-      onPointerCancel: (_) {
-        if (_activeDragAction == _DragAction.dismissingShade) {
-          _reduceBlur.value = false;
-          widget.onDragShadeEnd?.call(0.0);
-        } else if (_activeDragAction == _DragAction.expandingQs) {
+        },
+        onPointerUp: (event) {
+          _notifVelocityTracker?.addPosition(event.timeStamp, event.position);
+          final velocity =
+              _notifVelocityTracker?.getVelocity().pixelsPerSecond.dy ?? 0.0;
           final state = context.read<ShadeStateProvider>();
-          if (_qsBouncyController.value > 0.30) {
-            _qsBouncyController.animateTo(1.0, curve: Curves.easeOutCubic);
-            state.setUnifiedQsExpanded(true);
-          } else {
-            _qsBouncyController.animateTo(0.0, curve: Curves.easeInCubic);
-            state.setUnifiedQsExpanded(false);
+
+          if (_activeDragAction == _DragAction.expandingQs) {
+            if (velocity > 100 || _qsBouncyController.value > 0.30) {
+              HapticFeedback.lightImpact();
+              _qsBouncyController.animateTo(
+                1.0,
+                curve: Curves.easeOutCubic,
+                duration: const Duration(milliseconds: 220),
+              );
+              state.setUnifiedQsExpanded(true);
+            } else {
+              HapticFeedback.lightImpact();
+              _qsBouncyController.animateTo(
+                0.0,
+                curve: Curves.easeInCubic,
+                duration: const Duration(milliseconds: 180),
+              );
+              state.setUnifiedQsExpanded(false);
+            }
+          } else if (_activeDragAction == _DragAction.collapsingQs) {
+            if (velocity < -100 || _qsBouncyController.value < 0.70) {
+              HapticFeedback.lightImpact();
+              _qsBouncyController.animateTo(
+                0.0,
+                curve: Curves.easeInCubic,
+                duration: const Duration(milliseconds: 200),
+              );
+              state.setUnifiedQsExpanded(false);
+            } else {
+              HapticFeedback.lightImpact();
+              _qsBouncyController.animateTo(
+                1.0,
+                curve: Curves.easeOutCubic,
+                duration: const Duration(milliseconds: 200),
+              );
+              state.setUnifiedQsExpanded(true);
+            }
+          } else if (_activeDragAction == _DragAction.dismissingShade) {
+            _reduceBlur.value = false;
+            widget.onDragShadeEnd?.call(velocity);
           }
-        } else if (_activeDragAction == _DragAction.collapsingQs) {
-          final state = context.read<ShadeStateProvider>();
-          if (_qsBouncyController.value < 0.70) {
-            _qsBouncyController.animateTo(0.0, curve: Curves.easeInCubic);
-            state.setUnifiedQsExpanded(false);
-          } else {
-            _qsBouncyController.animateTo(1.0, curve: Curves.easeOutCubic);
-            state.setUnifiedQsExpanded(true);
+
+          _activeDragAction = _DragAction.none;
+          _notifVelocityTracker = null;
+        },
+        onPointerCancel: (_) {
+          if (_activeDragAction == _DragAction.dismissingShade) {
+            _reduceBlur.value = false;
+            widget.onDragShadeEnd?.call(0.0);
+          } else if (_activeDragAction == _DragAction.expandingQs) {
+            final state = context.read<ShadeStateProvider>();
+            if (_qsBouncyController.value > 0.30) {
+              _qsBouncyController.animateTo(1.0, curve: Curves.easeOutCubic);
+              state.setUnifiedQsExpanded(true);
+            } else {
+              _qsBouncyController.animateTo(0.0, curve: Curves.easeInCubic);
+              state.setUnifiedQsExpanded(false);
+            }
+          } else if (_activeDragAction == _DragAction.collapsingQs) {
+            final state = context.read<ShadeStateProvider>();
+            if (_qsBouncyController.value < 0.70) {
+              _qsBouncyController.animateTo(0.0, curve: Curves.easeInCubic);
+              state.setUnifiedQsExpanded(false);
+            } else {
+              _qsBouncyController.animateTo(1.0, curve: Curves.easeOutCubic);
+              state.setUnifiedQsExpanded(true);
+            }
           }
-        }
-        _activeDragAction = _DragAction.none;
-        _notifVelocityTracker = null;
-      },
-      child: child,
+          _activeDragAction = _DragAction.none;
+          _notifVelocityTracker = null;
+        },
+        child: child,
+      ),
     );
   }
 }

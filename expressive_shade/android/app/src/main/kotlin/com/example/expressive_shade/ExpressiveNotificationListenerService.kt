@@ -1,12 +1,12 @@
 package com.example.expressive_shade
 
+import android.app.ActivityOptions
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.RemoteInput
-import android.content.Intent
-import android.os.Bundle
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.drawable.BitmapDrawable
@@ -15,6 +15,8 @@ import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
+import android.os.Build
+import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import java.io.ByteArrayOutputStream
@@ -177,24 +179,46 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
     private fun findNotification(key: String): StatusBarNotification? =
         try { activeNotifications?.firstOrNull { it.key == key } } catch (_: Exception) { null }
 
+    private fun createActivityOptionsBundle(): Bundle? {
+        return when {
+            Build.VERSION.SDK_INT >= 34 -> {
+                try {
+                    val makeBasic = ActivityOptions.makeBasic()
+                    val method = makeBasic.javaClass.getMethod(
+                        "setPendingIntentBackgroundActivityStartMode",
+                        Int::class.javaPrimitiveType
+                    )
+                    method.invoke(makeBasic, 1) // ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED = 1
+                    makeBasic.toBundle()
+                } catch (_: Exception) {
+                    ActivityOptions.makeBasic().toBundle()
+                }
+            }
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M -> ActivityOptions.makeBasic().toBundle()
+            else -> null
+        }
+    }
+
     /** Fires a notification action. When [replyText] is set it is delivered through the action's RemoteInput. */
     fun performNotificationAction(key: String, index: Int, replyText: String?): Boolean {
         val sbn = findNotification(key) ?: return false
         val action = sbn.notification.actions?.getOrNull(index) ?: return false
         val pendingIntent = action.actionIntent ?: return false
         return try {
+            val options = createActivityOptionsBundle()
             if (replyText != null) {
                 val remoteInputs = action.remoteInputs ?: return false
                 val fillIn = Intent()
                 val results = Bundle()
                 remoteInputs.forEach { results.putCharSequence(it.resultKey, replyText) }
                 RemoteInput.addResultsToIntent(remoteInputs, fillIn, results)
-                pendingIntent.send(this, 0, fillIn)
+                pendingIntent.send(this, 0, fillIn, null, null, null, options)
             } else {
-                pendingIntent.send()
+                pendingIntent.send(this, 0, null, null, null, null, options)
             }
             true
-        } catch (e: PendingIntent.CanceledException) {
+        } catch (e: Exception) {
+            e.printStackTrace()
             false
         }
     }
@@ -204,12 +228,14 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
         val sbn = findNotification(key) ?: return false
         val intent = sbn.notification.contentIntent ?: return false
         return try {
-            intent.send()
+            val options = createActivityOptionsBundle()
+            intent.send(this, 0, null, null, null, null, options)
             if (sbn.notification.flags and Notification.FLAG_AUTO_CANCEL != 0) {
                 cancelNotification(key)
             }
             true
-        } catch (e: PendingIntent.CanceledException) {
+        } catch (e: Exception) {
+            e.printStackTrace()
             false
         }
     }
