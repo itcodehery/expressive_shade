@@ -478,6 +478,86 @@ class LayoutTab extends StatelessWidget {
             ),
           );
         }),
+        const SizedBox(height: 16),
+
+        // Inline Integration Setting Card
+        InkWell(
+          borderRadius: BorderRadius.circular(28),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            state.setInlineLyricsEnabled(!state.inlineLyricsEnabled);
+          },
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: state.inlineLyricsEnabled
+                  ? colors.activePill.withValues(alpha: 0.12)
+                  : colors.surface,
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(
+                color: state.inlineLyricsEnabled
+                    ? colors.activePill
+                    : Colors.transparent,
+                width: 2,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: state.inlineLyricsEnabled
+                        ? colors.activePill
+                        : colors.inactivePill,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.lyrics_rounded,
+                      size: 24,
+                      color: state.inlineLyricsEnabled
+                          ? colors.onActivePill
+                          : colors.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Inline Integration',
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'Show minimalist synchronized lyrics below the media player.',
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 12.5,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: state.inlineLyricsEnabled,
+                  activeThumbColor: colors.activePill,
+                  onChanged: (val) {
+                    HapticFeedback.selectionClick();
+                    state.setInlineLyricsEnabled(val);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
         const SizedBox(height: 28),
 
         Text(

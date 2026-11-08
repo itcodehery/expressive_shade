@@ -35,6 +35,7 @@ object ExpressiveNativeBridge {
 
     // Coalesce bursts of notification events into a single refresh.
     private const val NOTIFICATION_REFRESH_DEBOUNCE_MS = 150L
+    private const val MEDIA_REFRESH_DEBOUNCE_MS = 250L
 
     private val activeHardwareChannels = mutableListOf<MethodChannel>()
     private val activeNotificationsChannels = mutableListOf<MethodChannel>()
@@ -46,6 +47,11 @@ object ExpressiveNativeBridge {
     private val notifyNotificationsRunnable = Runnable {
         for (ch in activeNotificationsChannels) {
             try { ch.invokeMethod("onNotificationsChanged", null) } catch (_: Exception) {}
+        }
+    }
+    private val notifyMediaRunnable = Runnable {
+        for (ch in activeMediaChannels) {
+            try { ch.invokeMethod("onMediaChanged", null) } catch (_: Exception) {}
         }
     }
 
@@ -149,11 +155,8 @@ object ExpressiveNativeBridge {
             mainHandler.postDelayed(notifyNotificationsRunnable, NOTIFICATION_REFRESH_DEBOUNCE_MS)
         }
         ExpressiveNotificationListenerService.onMediaChangedListener = {
-            mainHandler.post {
-                for (ch in activeMediaChannels) {
-                    try { ch.invokeMethod("onMediaChanged", null) } catch (_: Exception) {}
-                }
-            }
+            mainHandler.removeCallbacks(notifyMediaRunnable)
+            mainHandler.postDelayed(notifyMediaRunnable, MEDIA_REFRESH_DEBOUNCE_MS)
         }
     }
 

@@ -18,6 +18,11 @@ class MediaChannelHandler : MethodChannel.MethodCallHandler {
                 service?.seekTo(position)
                 result.success(true)
             }
+            "seekToMs" -> {
+                val positionMs = (call.argument<Number>("positionMs"))?.toLong() ?: 0L
+                service?.seekToMs(positionMs)
+                result.success(true)
+            }
             else -> result.notImplemented()
         }
     }

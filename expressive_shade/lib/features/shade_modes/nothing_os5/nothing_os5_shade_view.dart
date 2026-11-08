@@ -8,6 +8,7 @@ import '../../../models/qs_tile_model.dart';
 import '../../../theme/m3_expressive_theme.dart';
 import '../../../widgets/expressive_media_card.dart';
 import '../../notifications/notification_list.dart';
+import '../../lyrics/widgets/inline_lyrics_view.dart';
 import 'bento_grid_packer.dart';
 import 'widgets/nothing_os5_header.dart';
 import 'widgets/nothing_os5_media_cards.dart';
@@ -176,6 +177,10 @@ class NothingOs5ShadeView extends StatelessWidget {
                   onSkipPrevious: onSkipPrevious,
                   onProgressChanged: onProgressChanged,
                 ),
+                InlineLyricsView(
+                  colors: colors,
+                  font: font,
+                ),
                 const SizedBox(height: 20),
 
                 // 3. Section Header ("Silent" / "Notifications" + "x" button)
@@ -341,6 +346,10 @@ class NothingOs5ShadeView extends StatelessWidget {
             colors: colors,
             onPlayPause: onPlayPause,
             onSkipNext: onSkipNext,
+          ),
+          InlineLyricsView(
+            colors: colors,
+            font: font,
           ),
           const SizedBox(height: 14),
 

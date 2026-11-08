@@ -107,10 +107,13 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       if (!mounted) return;
       context.read<ShadeStateProvider>().setUnifiedQsExpanded(false);
       _qsBouncyController.value = 0.0;
-      if (_unifiedScrollController.hasClients) {
+      if (_unifiedScrollController.hasClients &&
+          _unifiedScrollController.position.hasContentDimensions) {
         _unifiedScrollController.jumpTo(0.0);
       }
-      if (isSplit && _pageController.hasClients) {
+      if (isSplit &&
+          _pageController.hasClients &&
+          _pageController.position.hasContentDimensions) {
         final targetIndex = context.read<ShadeStateProvider>().splitTabIndex;
         _pageController.jumpToPage(targetIndex);
       }
@@ -591,6 +594,17 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           },
                           impulseNotifier: _tileImpulseNotifier,
                           scrollController: _unifiedScrollController,
+                          mediaTitle: state.mediaTitle,
+                          mediaArtist: state.mediaArtist,
+                          mediaApp: state.mediaApp,
+                          isPlaying: state.isPlaying,
+                          mediaProgress: state.mediaProgress,
+                          mediaArtwork: state.mediaArtwork,
+                          mediaPlayerStyle: state.mediaPlayerStyle,
+                          onPlayPause: () => state.togglePlayPause(),
+                          onSkipNext: () => state.skipNextMedia(),
+                          onSkipPrevious: () => state.skipPreviousMedia(),
+                          onProgressChanged: (v) => state.setMediaProgress(v),
                         ),
                     },
             ),

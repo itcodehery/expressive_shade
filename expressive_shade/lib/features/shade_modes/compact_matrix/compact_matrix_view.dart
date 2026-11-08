@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../../models/font_config.dart';
+import '../../../../models/media_player_style.dart';
 import '../../../../models/notification_model.dart';
 import '../../../../models/notification_style.dart';
 import '../../../../models/qs_tile_model.dart';
 import '../../../../models/slider_style.dart';
 import '../../../../services/smart_notification_classifier.dart';
 import '../../../../theme/m3_expressive_theme.dart';
+import '../../../../widgets/expressive_media_card.dart';
+import '../../lyrics/widgets/inline_lyrics_view.dart';
 import '../../../../widgets/expressive_pill.dart';
 import '../../../../widgets/expressive_slider.dart';
 import '../../../../widgets/notification_channel_settings_card.dart';
@@ -44,6 +47,19 @@ class CompactMatrixView extends StatefulWidget {
   final ValueNotifier<TileImpulse?>? impulseNotifier;
   final ScrollController scrollController;
 
+  // Media
+  final String mediaTitle;
+  final String mediaArtist;
+  final String mediaApp;
+  final bool isPlaying;
+  final double mediaProgress;
+  final dynamic mediaArtwork;
+  final MediaPlayerStyle mediaPlayerStyle;
+  final VoidCallback? onPlayPause;
+  final VoidCallback? onSkipNext;
+  final VoidCallback? onSkipPrevious;
+  final ValueChanged<double>? onProgressChanged;
+
   const CompactMatrixView({
     super.key,
     required this.batteryLevel,
@@ -73,6 +89,17 @@ class CompactMatrixView extends StatefulWidget {
     this.onSnoozeNotification,
     required this.impulseNotifier,
     required this.scrollController,
+    this.mediaTitle = '',
+    this.mediaArtist = '',
+    this.mediaApp = '',
+    this.isPlaying = false,
+    this.mediaProgress = 0.0,
+    this.mediaArtwork,
+    this.mediaPlayerStyle = MediaPlayerStyle.expressiveWave,
+    this.onPlayPause,
+    this.onSkipNext,
+    this.onSkipPrevious,
+    this.onProgressChanged,
   });
 
   @override
@@ -241,6 +268,38 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
       ),
       const SizedBox(height: 14),
 
+      // Media Player Card + Inline Integration
+      if (widget.isPlaying || (widget.mediaTitle.isNotEmpty && widget.mediaTitle != 'No media playing')) ...[
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ExpressiveMediaCard(
+                title: widget.mediaTitle,
+                artist: widget.mediaArtist,
+                appSource: widget.mediaApp,
+                isPlaying: widget.isPlaying,
+                progress: widget.mediaProgress,
+                artwork: widget.mediaArtwork,
+                colors: widget.colors,
+                font: widget.font,
+                style: widget.mediaPlayerStyle,
+                onPlayPause: widget.onPlayPause ?? () {},
+                onSkipNext: widget.onSkipNext,
+                onSkipPrevious: widget.onSkipPrevious,
+                onProgressChanged: widget.onProgressChanged ?? (_) {},
+              ),
+              InlineLyricsView(
+                colors: widget.colors,
+                font: widget.font,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+
         // 3. Categorized Notifications (Follows theme with darker background and curved bottom corners)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -296,8 +355,9 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
   }
 
   Widget _buildNotificationsSection() {
+    Widget content;
     if (widget.notifications.isEmpty) {
-      return Container(
+      content = Container(
         padding: const EdgeInsets.symmetric(vertical: 28),
         alignment: Alignment.center,
         child: Text(
@@ -309,12 +369,10 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
           ),
         ),
       );
-    }
-
-    if (widget.isUnorganized) {
+    } else if (widget.isUnorganized) {
       final nonSummaryList =
           widget.notifications.where((n) => !n.isGroupSummary).toList();
-      return Column(
+      content = Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionHeader('All notifications'),
@@ -328,67 +386,69 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
           _buildActionButtonsRow(),
         ],
       );
-    }
+    } else {
+      final priorityList = <NotificationModel>[];
+      final updatesList = <NotificationModel>[];
+      final lowPriorityList = <NotificationModel>[];
 
-    final priorityList = <NotificationModel>[];
-    final updatesList = <NotificationModel>[];
-    final lowPriorityList = <NotificationModel>[];
-
-    for (final rawNotif in widget.notifications) {
-      if (rawNotif.isGroupSummary) continue;
-      final notif = _resolveClassified(rawNotif);
-      switch (notif.category) {
-        case NotificationCategory.urgent:
-        case NotificationCategory.people:
-          priorityList.add(notif);
-        case NotificationCategory.updates:
-        case NotificationCategory.other:
-          updatesList.add(notif);
-        case NotificationCategory.social:
-        case NotificationCategory.promotions:
-          lowPriorityList.add(notif);
+      for (final rawNotif in widget.notifications) {
+        if (rawNotif.isGroupSummary) continue;
+        final notif = _resolveClassified(rawNotif);
+        switch (notif.category) {
+          case NotificationCategory.urgent:
+          case NotificationCategory.people:
+            priorityList.add(notif);
+          case NotificationCategory.updates:
+          case NotificationCategory.other:
+            updatesList.add(notif);
+          case NotificationCategory.social:
+          case NotificationCategory.promotions:
+            lowPriorityList.add(notif);
+        }
       }
+
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (priorityList.isNotEmpty) ...[
+            _buildSectionHeader('Priority & People'),
+            const SizedBox(height: 8),
+            for (int i = 0; i < priorityList.length; i++)
+              _buildSmartNotifCard(
+                priorityList[i],
+                isFirst: i == 0,
+                isLast: i == priorityList.length - 1,
+              ),
+            if (updatesList.isNotEmpty || lowPriorityList.isNotEmpty)
+              const SizedBox(height: 16),
+          ],
+          if (updatesList.isNotEmpty) ...[
+            _buildSectionHeader('Updates'),
+            const SizedBox(height: 8),
+            for (int i = 0; i < updatesList.length; i++)
+              _buildSmartNotifCard(
+                updatesList[i],
+                isFirst: i == 0,
+                isLast: i == updatesList.length - 1,
+              ),
+            if (lowPriorityList.isNotEmpty) const SizedBox(height: 16),
+          ],
+          if (lowPriorityList.isNotEmpty) ...[
+            _buildSectionHeader('Promotions & Social'),
+            const SizedBox(height: 8),
+            for (int i = 0; i < lowPriorityList.length; i++)
+              _buildSmartNotifCard(
+                lowPriorityList[i],
+                isFirst: i == 0,
+                isLast: i == lowPriorityList.length - 1,
+              ),
+          ],
+          _buildActionButtonsRow(),
+        ],
+      );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (priorityList.isNotEmpty) ...[
-          _buildSectionHeader('Priority & People'),
-          const SizedBox(height: 8),
-          for (int i = 0; i < priorityList.length; i++)
-            _buildSmartNotifCard(
-              priorityList[i],
-              isFirst: i == 0,
-              isLast: i == priorityList.length - 1,
-            ),
-          if (updatesList.isNotEmpty || lowPriorityList.isNotEmpty)
-            const SizedBox(height: 16),
-        ],
-        if (updatesList.isNotEmpty) ...[
-          _buildSectionHeader('Updates'),
-          const SizedBox(height: 8),
-          for (int i = 0; i < updatesList.length; i++)
-            _buildSmartNotifCard(
-              updatesList[i],
-              isFirst: i == 0,
-              isLast: i == updatesList.length - 1,
-            ),
-          if (lowPriorityList.isNotEmpty) const SizedBox(height: 16),
-        ],
-        if (lowPriorityList.isNotEmpty) ...[
-          _buildSectionHeader('Promotions & Social'),
-          const SizedBox(height: 8),
-          for (int i = 0; i < lowPriorityList.length; i++)
-            _buildSmartNotifCard(
-              lowPriorityList[i],
-              isFirst: i == 0,
-              isLast: i == lowPriorityList.length - 1,
-            ),
-        ],
-        _buildActionButtonsRow(),
-      ],
-    );
+    return content;
   }
 
   Widget _buildSectionHeader(String title) {

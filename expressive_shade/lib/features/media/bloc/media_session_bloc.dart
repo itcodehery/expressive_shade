@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../services/system_media_service.dart';
+import '../../lyrics/services/lyrics_sync_service.dart';
 import 'media_session_event.dart';
 import 'media_session_state.dart';
 
@@ -26,6 +27,15 @@ class MediaSessionBloc extends Bloc<MediaSessionEvent, MediaSessionState> {
   Future<void> _loadLiveMedia() async {
     final media = await SystemMediaService.getMediaState();
     if (media != null && media.title.isNotEmpty) {
+      LyricsSyncService.instance.updateMediaState(
+        title: media.title,
+        artist: media.artist,
+        album: media.album,
+        isPlaying: media.isPlaying,
+        progress: media.progress,
+        durationMs: media.durationMs,
+        positionMs: media.positionMs,
+      );
       add(MediaStateUpdatedEvent(
         title: media.title,
         artist: media.artist,
@@ -51,6 +61,12 @@ class MediaSessionBloc extends Bloc<MediaSessionEvent, MediaSessionState> {
     ));
   }
 
+  void _scheduleMediaRefreshBurst() {
+    Future.delayed(const Duration(milliseconds: 200), _loadLiveMedia);
+    Future.delayed(const Duration(milliseconds: 500), _loadLiveMedia);
+    Future.delayed(const Duration(milliseconds: 900), _loadLiveMedia);
+  }
+
   void _onTogglePlayPause(
     TogglePlayPauseEvent event,
     Emitter<MediaSessionState> emit,
@@ -58,6 +74,7 @@ class MediaSessionBloc extends Bloc<MediaSessionEvent, MediaSessionState> {
     final newPlaying = !state.isPlaying;
     SystemMediaService.controlMedia('toggle');
     emit(state.copyWith(isPlaying: newPlaying));
+    _scheduleMediaRefreshBurst();
   }
 
   void _onSkipNextMedia(
@@ -65,6 +82,7 @@ class MediaSessionBloc extends Bloc<MediaSessionEvent, MediaSessionState> {
     Emitter<MediaSessionState> emit,
   ) {
     SystemMediaService.controlMedia('next');
+    _scheduleMediaRefreshBurst();
   }
 
   void _onSkipPreviousMedia(
@@ -72,6 +90,7 @@ class MediaSessionBloc extends Bloc<MediaSessionEvent, MediaSessionState> {
     Emitter<MediaSessionState> emit,
   ) {
     SystemMediaService.controlMedia('prev');
+    _scheduleMediaRefreshBurst();
   }
 
   void _onSeekMedia(

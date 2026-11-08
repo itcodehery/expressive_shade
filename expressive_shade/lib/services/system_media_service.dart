@@ -3,17 +3,23 @@ import 'package:flutter/services.dart';
 class SystemMediaInfo {
   final String title;
   final String artist;
+  final String album;
   final String appName;
   final bool isPlaying;
   final double progress;
+  final int durationMs;
+  final int positionMs;
   final Uint8List? artwork;
 
   const SystemMediaInfo({
     required this.title,
     required this.artist,
+    this.album = '',
     required this.appName,
     required this.isPlaying,
     required this.progress,
+    this.durationMs = 0,
+    this.positionMs = 0,
     this.artwork,
   });
 }
@@ -50,9 +56,12 @@ class SystemMediaService {
       return SystemMediaInfo(
         title: raw['title']?.toString() ?? 'Unknown Title',
         artist: raw['artist']?.toString() ?? 'Unknown Artist',
+        album: raw['album']?.toString() ?? '',
         appName: raw['appName']?.toString() ?? 'Music',
         isPlaying: raw['isPlaying'] == true,
         progress: (raw['progress'] as num?)?.toDouble() ?? 0.0,
+        durationMs: (raw['durationMs'] as num?)?.toInt() ?? 0,
+        positionMs: (raw['positionMs'] as num?)?.toInt() ?? 0,
         artwork: artBytes,
       );
     } catch (_) {
@@ -69,6 +78,12 @@ class SystemMediaService {
   static Future<void> seekTo(double position) async {
     try {
       await _channel.invokeMethod('seekTo', {'position': position});
+    } catch (_) {}
+  }
+
+  static Future<void> seekToMs(int positionMs) async {
+    try {
+      await _channel.invokeMethod('seekToMs', {'positionMs': positionMs});
     } catch (_) {}
   }
 }

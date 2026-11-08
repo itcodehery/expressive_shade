@@ -12,6 +12,7 @@ import '../../../../widgets/expressive_media_card.dart';
 import '../../../../widgets/expressive_pill.dart';
 import '../../../../widgets/expressive_slider.dart';
 import '../../notifications/notification_list.dart';
+import '../../lyrics/widgets/inline_lyrics_view.dart';
 import '../common/shade_tiles_grid.dart';
 import 'widgets/unified_paginated_grid.dart';
 
@@ -227,6 +228,10 @@ class UnifiedShadeView extends StatelessWidget {
                   onSkipNext: onSkipNext,
                   onSkipPrevious: onSkipPrevious,
                   onProgressChanged: onProgressChanged,
+                ),
+                InlineLyricsView(
+                  colors: colors,
+                  font: font,
                 ),
               ],
             ],

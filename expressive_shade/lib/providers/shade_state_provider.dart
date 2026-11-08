@@ -17,6 +17,7 @@ import '../services/system_notification_service.dart';
 import '../services/system_permissions_service.dart';
 import '../services/system_settings_service.dart';
 import '../services/smart_notification_classifier.dart';
+import '../features/lyrics/services/lyrics_sync_service.dart';
 
 class ShadeStateProvider extends ChangeNotifier {
   static const MethodChannel _overlayEventsChannel = MethodChannel(
@@ -51,6 +52,9 @@ class ShadeStateProvider extends ChangeNotifier {
     SystemMediaService.initialize(() {
       _loadLiveMedia();
     });
+
+    // Start synced lyrics service
+    LyricsSyncService.instance.start();
   }
 
   void _initSettingsSync() {
@@ -100,6 +104,9 @@ class ShadeStateProvider extends ChangeNotifier {
         (e) => e.name == ms,
         orElse: () => MediaPlayerStyle.expressiveWave,
       );
+    }
+    if (s['inlineLyricsEnabled'] != null) {
+      _inlineLyricsEnabled = s['inlineLyricsEnabled'] == true;
     }
     if (s['notificationStyle'] != null) {
       final ns = s['notificationStyle'].toString();
@@ -244,6 +251,7 @@ class ShadeStateProvider extends ChangeNotifier {
         'shadeMode',
         'sliderStyle',
         'mediaPlayerStyle',
+        'inlineLyricsEnabled',
         'themeMode',
         'themeSource',
         'selectedPreset',
@@ -266,6 +274,9 @@ class ShadeStateProvider extends ChangeNotifier {
     }
     if (dirty.contains('mediaPlayerStyle')) {
       map['mediaPlayerStyle'] = _mediaPlayerStyle.name;
+    }
+    if (dirty.contains('inlineLyricsEnabled')) {
+      map['inlineLyricsEnabled'] = _inlineLyricsEnabled;
     }
     if (dirty.contains('notificationStyle')) {
       map['notificationStyle'] = _notificationStyle.name;
@@ -332,6 +343,7 @@ class ShadeStateProvider extends ChangeNotifier {
   @override
   void dispose() {
     _flushSave();
+    LyricsSyncService.instance.stop();
     super.dispose();
   }
 
@@ -386,6 +398,17 @@ class ShadeStateProvider extends ChangeNotifier {
   void setMediaPlayerStyle(MediaPlayerStyle style) {
     _mediaPlayerStyle = style;
     _scheduleSave({'mediaPlayerStyle'});
+    notifyListeners();
+  }
+
+  // Inline Integration (Synced Lyrics)
+  bool _inlineLyricsEnabled = true;
+  bool get inlineLyricsEnabled => _inlineLyricsEnabled;
+
+  void setInlineLyricsEnabled(bool enabled) {
+    if (_inlineLyricsEnabled == enabled) return;
+    _inlineLyricsEnabled = enabled;
+    _scheduleSave({'inlineLyricsEnabled'});
     notifyListeners();
   }
 
@@ -813,6 +836,15 @@ class ShadeStateProvider extends ChangeNotifier {
       _isPlaying = media.isPlaying;
       _mediaProgress = media.progress;
       _mediaArtwork = media.artwork;
+      LyricsSyncService.instance.updateMediaState(
+        title: media.title,
+        artist: media.artist,
+        album: media.album,
+        isPlaying: media.isPlaying,
+        progress: media.progress,
+        durationMs: media.durationMs,
+        positionMs: media.positionMs,
+      );
       notifyListeners();
     }
   }
@@ -1159,18 +1191,27 @@ class ShadeStateProvider extends ChangeNotifier {
     }
   }
 
+  void _scheduleMediaRefreshBurst() {
+    Future.delayed(const Duration(milliseconds: 200), _loadLiveMedia);
+    Future.delayed(const Duration(milliseconds: 500), _loadLiveMedia);
+    Future.delayed(const Duration(milliseconds: 900), _loadLiveMedia);
+  }
+
   void togglePlayPause() {
     _isPlaying = !_isPlaying;
     SystemMediaService.controlMedia('toggle');
     notifyListeners();
+    _scheduleMediaRefreshBurst();
   }
 
   void skipNextMedia() {
     SystemMediaService.controlMedia('next');
+    _scheduleMediaRefreshBurst();
   }
 
   void skipPreviousMedia() {
     SystemMediaService.controlMedia('prev');
+    _scheduleMediaRefreshBurst();
   }
 
   void setMediaProgress(double val) {

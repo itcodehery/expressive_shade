@@ -17,6 +17,8 @@ import android.media.session.MediaSessionManager
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import java.io.ByteArrayOutputStream
@@ -33,9 +35,70 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
         var onMediaChangedListener: (() -> Unit)? = null
     }
 
+    private var boundMediaController: MediaController? = null
+    private var lastMediaTitle: String? = null
+    private var lastMediaArtist: String? = null
+    private var lastPlaybackState: Int? = null
+    private var cachedArtKey: String? = null
+    private var cachedArtBytes: ByteArray? = null
+
+    private val mediaCallback = object : MediaController.Callback() {
+        override fun onMetadataChanged(metadata: MediaMetadata?) {
+            super.onMetadataChanged(metadata)
+            val title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE)
+            val artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
+                ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
+            if (title != lastMediaTitle || artist != lastMediaArtist) {
+                lastMediaTitle = title
+                lastMediaArtist = artist
+                onMediaChangedListener?.invoke()
+            }
+        }
+
+        override fun onPlaybackStateChanged(state: PlaybackState?) {
+            super.onPlaybackStateChanged(state)
+            val st = state?.state
+            if (st != lastPlaybackState) {
+                lastPlaybackState = st
+                onMediaChangedListener?.invoke()
+            }
+        }
+    }
+
+    private val sessionChangedListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
+        val changed = updateActiveMediaController(controllers)
+        if (changed) {
+            onMediaChangedListener?.invoke()
+        }
+    }
+
+    private fun updateActiveMediaController(controllers: List<MediaController>?): Boolean {
+        return try {
+            val nextController = controllers?.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                ?: controllers?.firstOrNull()
+            if (boundMediaController?.sessionToken != nextController?.sessionToken) {
+                boundMediaController?.unregisterCallback(mediaCallback)
+                boundMediaController = nextController
+                boundMediaController?.registerCallback(mediaCallback, Handler(Looper.getMainLooper()))
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override fun onListenerConnected() {
         super.onListenerConnected()
         instance = this
+        try {
+            val mediaSessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            val componentName = ComponentName(this, ExpressiveNotificationListenerService::class.java)
+            mediaSessionManager?.addOnActiveSessionsChangedListener(sessionChangedListener, componentName)
+            val controllers = mediaSessionManager?.getActiveSessions(componentName)
+            updateActiveMediaController(controllers)
+        } catch (_: Exception) {}
         onNotificationsChangedListener?.invoke()
         onMediaChangedListener?.invoke()
     }
@@ -50,6 +113,12 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        try {
+            boundMediaController?.unregisterCallback(mediaCallback)
+            boundMediaController = null
+            val mediaSessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager
+            mediaSessionManager?.removeOnActiveSessionsChangedListener(sessionChangedListener)
+        } catch (_: Exception) {}
         instance = null
     }
 
@@ -274,6 +343,14 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
             val activeController = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
                 ?: controllers.firstOrNull() ?: return null
 
+            if (boundMediaController?.sessionToken != activeController.sessionToken) {
+                boundMediaController?.unregisterCallback(mediaCallback)
+                boundMediaController = activeController
+                try {
+                    activeController.registerCallback(mediaCallback, Handler(Looper.getMainLooper()))
+                } catch (_: Exception) {}
+            }
+
             val metadata = activeController.metadata
             val playbackState = activeController.playbackState
             val isPlaying = playbackState?.state == PlaybackState.STATE_PLAYING
@@ -283,6 +360,7 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
             val duration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
             val position = playbackState?.position ?: 0L
             val progress = if (duration > 0) (position.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0) else 0.0
+            val album = metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
 
             val appName = try {
                 val pm = packageManager
@@ -292,26 +370,37 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 activeController.packageName
             }
 
-            // Extract album artwork bitmap if available
-            val artBitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
-                ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-            val artBytes = artBitmap?.let { bmp ->
-                try {
-                    val stream = ByteArrayOutputStream()
-                    val scaled = Bitmap.createScaledBitmap(bmp, 256, 256, true)
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
-                    stream.toByteArray()
-                } catch (_: Exception) {
-                    null
+            // Extract album artwork bitmap if available with in-memory caching
+            val currentArtKey = "$title::$artist"
+            val artBytes = if (currentArtKey == cachedArtKey && cachedArtBytes != null) {
+                cachedArtBytes
+            } else {
+                val artBitmap = metadata?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+                    ?: metadata?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+                val bytes = artBitmap?.let { bmp ->
+                    try {
+                        val stream = ByteArrayOutputStream()
+                        val scaled = Bitmap.createScaledBitmap(bmp, 256, 256, true)
+                        scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+                        stream.toByteArray()
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
+                cachedArtKey = currentArtKey
+                cachedArtBytes = bytes
+                bytes
             }
 
             val res = mutableMapOf<String, Any>(
                 "title" to title,
                 "artist" to artist,
+                "album" to album,
                 "appName" to appName,
                 "isPlaying" to isPlaying,
-                "progress" to progress
+                "progress" to progress,
+                "durationMs" to duration,
+                "positionMs" to position
             )
             if (artBytes != null) {
                 res["artwork"] = artBytes
@@ -343,6 +432,10 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 "next" -> activeController.transportControls.skipToNext()
                 "prev" -> activeController.transportControls.skipToPrevious()
             }
+            val mainHandler = Handler(Looper.getMainLooper())
+            mainHandler.postDelayed({ onMediaChangedListener?.invoke() }, 200L)
+            mainHandler.postDelayed({ onMediaChangedListener?.invoke() }, 500L)
+            mainHandler.postDelayed({ onMediaChangedListener?.invoke() }, 900L)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -360,6 +453,19 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 val targetMs = (duration * progress.coerceIn(0.0, 1.0)).toLong()
                 activeController.transportControls.seekTo(targetMs)
             }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun seekToMs(positionMs: Long) {
+        try {
+            val mediaSessionManager = getSystemService(Context.MEDIA_SESSION_SERVICE) as? MediaSessionManager ?: return
+            val componentName = ComponentName(this, ExpressiveNotificationListenerService::class.java)
+            val controllers = mediaSessionManager.getActiveSessions(componentName)
+            val activeController = controllers.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
+                ?: controllers.firstOrNull() ?: return
+            activeController.transportControls.seekTo(positionMs)
         } catch (e: Exception) {
             e.printStackTrace()
         }
