@@ -1,18 +1,19 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../../../../models/qs_tile_model.dart';
 import '../../../../theme/m3_expressive_theme.dart';
 
 class UnifiedPaginatedTilesContainer extends StatefulWidget {
   final ExpressiveThemeColors colors;
-  final List<List<List<QsTileModel>>> pages;
+  final int pageCount;
+  final int maxRows;
   final Animation<double> bouncyAnimation;
   final Widget Function(BuildContext context, int pageIndex) builder;
 
   const UnifiedPaginatedTilesContainer({
     super.key,
     required this.colors,
-    required this.pages,
+    required this.pageCount,
+    required this.maxRows,
     required this.bouncyAnimation,
     required this.builder,
   });
@@ -33,7 +34,7 @@ class _UnifiedPaginatedTilesContainerState
   void initState() {
     super.initState();
     _pageController = PageController();
-    if (widget.pages.length > 1) {
+    if (widget.pageCount > 1) {
       _showIndicatorBriefly();
     }
   }
@@ -55,14 +56,14 @@ class _UnifiedPaginatedTilesContainerState
   @override
   void didUpdateWidget(covariant UnifiedPaginatedTilesContainer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_currentPage >= widget.pages.length) {
-      _currentPage = (widget.pages.length - 1).clamp(0, widget.pages.length);
+    if (_currentPage >= widget.pageCount) {
+      _currentPage = (widget.pageCount - 1).clamp(0, widget.pageCount);
       if (_pageController.hasClients) {
         _pageController.jumpToPage(_currentPage);
       }
     }
-    if (widget.pages.length != oldWidget.pages.length &&
-        widget.pages.length > 1) {
+    if (widget.pageCount != oldWidget.pageCount &&
+        widget.pageCount > 1) {
       _showIndicatorBriefly();
     }
   }
@@ -76,14 +77,8 @@ class _UnifiedPaginatedTilesContainerState
 
   @override
   Widget build(BuildContext context) {
-    final showIndicator = widget.pages.length > 1;
-
-    // Calculate maximum rows on any page (capped at 5)
-    int maxRows = 2;
-    for (final page in widget.pages) {
-      if (page.length > maxRows) maxRows = page.length;
-    }
-    maxRows = maxRows.clamp(2, 5);
+    final showIndicator = widget.pageCount > 1;
+    final maxRows = widget.maxRows.clamp(2, 5);
 
     const double collapsedHeight = (2 * 68.0) + (1 * 12.0); // 148.0
     final double expandedHeight =
@@ -124,7 +119,7 @@ class _UnifiedPaginatedTilesContainerState
                 },
                 child: PageView.builder(
                   controller: _pageController,
-                  itemCount: widget.pages.length,
+                  itemCount: widget.pageCount,
                   physics: const BouncingScrollPhysics(),
                   onPageChanged: (page) {
                     setState(() => _currentPage = page);
@@ -153,7 +148,7 @@ class _UnifiedPaginatedTilesContainerState
             curve: Curves.easeOutCubic,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(widget.pages.length, (index) {
+              children: List.generate(widget.pageCount, (index) {
                 final isSelected = index == _currentPage;
                 return AnimatedContainer(
                   duration: const Duration(milliseconds: 250),

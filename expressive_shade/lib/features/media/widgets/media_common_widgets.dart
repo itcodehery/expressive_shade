@@ -373,7 +373,7 @@ class _ExpressiveWaveformSeekerState extends State<ExpressiveWaveformSeeker>
     super.initState();
     _anim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 2200),
     );
     if (widget.isPlaying) {
       _anim.repeat();
@@ -484,17 +484,19 @@ class SquigglyWavePainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final centerY = size.height / 2;
-    final progressX = size.width * progress;
+    final progressX = (size.width * progress.clamp(0.0, 1.0)).clamp(0.0, size.width);
 
     final inactivePaint = Paint()
       ..color = inactiveColor
-      ..strokeWidth = 3.5
+      ..strokeWidth = 3.2
       ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
 
-    if (progressX < size.width) {
+    // Leave a small visual gap after the thumb before the inactive track begins
+    final inactiveStartX = (progressX + 8.0).clamp(0.0, size.width);
+    if (inactiveStartX < size.width) {
       canvas.drawLine(
-        Offset(progressX, centerY),
+        Offset(inactiveStartX, centerY),
         Offset(size.width, centerY),
         inactivePaint,
       );
@@ -503,43 +505,53 @@ class SquigglyWavePainter extends CustomPainter {
     if (progressX > 0) {
       final activePaint = Paint()
         ..color = activeColor
-        ..strokeWidth = 4.0
+        ..strokeWidth = 3.5
         ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
         ..style = PaintingStyle.stroke;
 
-      if (!isPlaying) {
-        canvas.drawLine(
-          Offset(0, centerY),
-          Offset(progressX, centerY),
-          activePaint,
-        );
-      } else {
-        final path = Path();
-        path.moveTo(0, centerY);
+      const double waveLength = 34.0;
+      final double waveAmp = isPlaying ? 3.2 : 2.2;
 
-        const double waveLength = 22.0;
-        const double waveAmp = 4.0;
-        double x = 0;
+      final path = Path();
+      double x = 0.0;
+      const double step = 1.0;
 
-        while (x < progressX) {
-          final nextX = (x + waveLength).clamp(0.0, progressX);
-          final midX = (x + nextX) / 2;
-          final sinVal = math.sin((x / waveLength) * 2 * math.pi - wavePhase);
-          final controlY = centerY + (sinVal * waveAmp);
+      while (x <= progressX) {
+        final double startTaper = (x / 12.0).clamp(0.0, 1.0);
+        final double endTaper = ((progressX - x) / 12.0).clamp(0.0, 1.0);
+        final double envelope = startTaper * endTaper;
+        final double angle = (x / waveLength) * 2 * math.pi - wavePhase;
+        final double y = centerY + (math.sin(angle) * waveAmp * envelope);
 
-          path.quadraticBezierTo(midX, controlY, nextX, centerY);
-          x = nextX;
+        if (x == 0.0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
         }
-
-        canvas.drawPath(path, activePaint);
+        x += step;
       }
+      path.lineTo(progressX, centerY);
+
+      canvas.drawPath(path, activePaint);
     }
 
+    // Draw M3 Expressive vertical pill / circle thumb at progressX
     final thumbPaint = Paint()
       ..color = thumbColor
       ..style = PaintingStyle.fill;
 
-    canvas.drawCircle(Offset(progressX, centerY), 6.5, thumbPaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(progressX.clamp(2.5, (size.width - 2.5).clamp(2.5, double.infinity)), centerY),
+          width: 5.0,
+          height: 16.0,
+        ),
+        const Radius.circular(3.0),
+      ),
+      thumbPaint,
+    );
   }
 
   @override

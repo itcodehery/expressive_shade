@@ -85,6 +85,15 @@ class SystemHardwareService {
     }
   }
 
+  static Future<bool> setRingerMode(int mode) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setRingerMode', {'mode': mode});
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool?> toggleAutoRotate() async {
     try {
       final res = await _channel.invokeMethod<bool>('toggleAutoRotate');
@@ -256,6 +265,12 @@ class SystemHardwareService {
   static Future<void> openSettings() async {
     try {
       await _channel.invokeMethod('openSettings');
+    } catch (_) {}
+  }
+
+  static Future<void> openShadeApp() async {
+    try {
+      await _channel.invokeMethod('openShadeApp');
     } catch (_) {}
   }
 

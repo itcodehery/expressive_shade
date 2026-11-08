@@ -48,10 +48,32 @@ class FontConfig {
       ),
     ),
     FontConfig(
-      id: 'Inter',
-      name: 'Inter',
-      sampleText: 'Precision Interface',
-      textStyleBuilder: ({textStyle, color, fontWeight, fontSize}) => GoogleFonts.inter(
+      id: 'DM Sans',
+      name: 'DM Sans',
+      sampleText: 'Clean Low-Contrast Geometric',
+      textStyleBuilder: ({textStyle, color, fontWeight, fontSize}) => GoogleFonts.dmSans(
+        textStyle: textStyle,
+        color: color,
+        fontWeight: fontWeight,
+        fontSize: fontSize,
+      ),
+    ),
+    FontConfig(
+      id: 'DM Mono',
+      name: 'DM Mono',
+      sampleText: 'Technical Monospace Precision',
+      textStyleBuilder: ({textStyle, color, fontWeight, fontSize}) => GoogleFonts.dmMono(
+        textStyle: textStyle,
+        color: color,
+        fontWeight: fontWeight,
+        fontSize: fontSize,
+      ),
+    ),
+    FontConfig(
+      id: 'Onest',
+      name: 'Onest',
+      sampleText: 'Hyper-Legible Modern Sans',
+      textStyleBuilder: ({textStyle, color, fontWeight, fontSize}) => GoogleFonts.onest(
         textStyle: textStyle,
         color: color,
         fontWeight: fontWeight,
@@ -63,17 +85,6 @@ class FontConfig {
       name: 'Poppins',
       sampleText: 'Soft Rounded Pill',
       textStyleBuilder: ({textStyle, color, fontWeight, fontSize}) => GoogleFonts.poppins(
-        textStyle: textStyle,
-        color: color,
-        fontWeight: fontWeight,
-        fontSize: fontSize,
-      ),
-    ),
-    FontConfig(
-      id: 'Urbanist',
-      name: 'Urbanist',
-      sampleText: 'Sleek & Contemporary',
-      textStyleBuilder: ({textStyle, color, fontWeight, fontSize}) => GoogleFonts.urbanist(
         textStyle: textStyle,
         color: color,
         fontWeight: fontWeight,

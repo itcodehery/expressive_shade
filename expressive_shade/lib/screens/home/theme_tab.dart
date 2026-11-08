@@ -273,7 +273,10 @@ class ThemeTab extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: pColors.activePill,
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Colors.white24, width: 1.5),
+                        border: Border.all(
+                          color: colors.textPrimary.withValues(alpha: 0.18),
+                          width: 1.5,
+                        ),
                       ),
                       child: Center(
                         child: Icon(Icons.circle, size: 14, color: pColors.onActivePill),
@@ -324,7 +327,10 @@ class ThemeTab extends StatelessWidget {
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white24, width: 1),
+              border: Border.all(
+                color: textColor.withValues(alpha: 0.25),
+                width: 1,
+              ),
             ),
           ),
           const SizedBox(height: 6),

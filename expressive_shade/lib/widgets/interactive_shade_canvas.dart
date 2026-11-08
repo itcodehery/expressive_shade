@@ -6,12 +6,15 @@ import 'package:provider/provider.dart';
 import '../features/shade_modes/common/standard_edit_tiles_view.dart';
 import '../features/shade_modes/compact_matrix/compact_matrix_view.dart';
 import '../features/shade_modes/compact_matrix/widgets/matrix_edit_grid.dart';
+import '../features/shade_modes/nothing_os5/nothing_os5_edit_view.dart';
+import '../features/shade_modes/nothing_os5/nothing_os5_shade_view.dart';
 import '../features/shade_modes/split/split_shade_view.dart';
 import '../features/shade_modes/unified/unified_shade_view.dart';
 import '../models/font_config.dart';
 import '../models/shade_mode.dart';
 import '../providers/shade_state_provider.dart';
 import '../theme/m3_expressive_theme.dart';
+import 'expressive_connectivity_dialog.dart';
 import 'expressive_pill.dart';
 import 'expressive_power_menu_dialog.dart';
 
@@ -22,6 +25,7 @@ class InteractiveShadeCanvas extends StatefulWidget {
   final void Function(VoidCallback action)? onDismissAndExecute;
   final void Function(double deltaDy)? onDragShadeUpdate;
   final void Function(double velocity)? onDragShadeEnd;
+  final VoidCallback? onOpenShadeApp;
 
   const InteractiveShadeCanvas({
     super.key,
@@ -29,6 +33,7 @@ class InteractiveShadeCanvas extends StatefulWidget {
     this.onDismissAndExecute,
     this.onDragShadeUpdate,
     this.onDragShadeEnd,
+    this.onOpenShadeApp,
   });
 
   @override
@@ -132,10 +137,28 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     }
   }
 
+  void _handleTileTap(
+    String id,
+    ShadeStateProvider state,
+    ExpressiveThemeColors colors,
+  ) {
+    if (ExpressiveConnectivityDialog.isConnectivityDialogTile(id)) {
+      ExpressiveConnectivityDialog.show(
+        context,
+        tileId: id,
+        colors: colors,
+        font: state.selectedFont,
+        onDismissAndExecute: widget.onDismissAndExecute,
+      );
+      return;
+    }
+    state.toggleTile(id);
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ShadeStateProvider>();
-    final isSplit = state.shadeMode == ShadeMode.split;
+    final isSplit = state.shadeMode.isSplitLike;
     final isExpanded = state.isUnifiedQsExpanded;
     final openEpoch = state.shadeOpenEpoch;
     final colors = widget.colors;
@@ -161,7 +184,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       }
     }
 
-    final showStandardHeader = state.shadeMode != ShadeMode.smart;
+    final showStandardHeader = state.shadeMode != ShadeMode.smart &&
+        state.shadeMode != ShadeMode.nothingOs5;
 
     final mainContent = ClipRRect(
       borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
@@ -212,8 +236,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
             // Main View
             Expanded(
               child: _isEditMode
-                  ? (state.shadeMode == ShadeMode.smart
-                      ? MatrixEditGrid(
+                  ? switch (state.shadeMode) {
+                      ShadeMode.smart => MatrixEditGrid(
                           tiles: state.tiles,
                           selectedTileId: _selectedTileId,
                           colors: colors,
@@ -228,21 +252,147 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                             state.flushSave();
                             setState(() => _isEditMode = false);
                           },
-                        )
-                      : StandardEditTilesView(
+                          onOpenApp: () => _handleOpenShadeApp(state),
+                        ),
+                      ShadeMode.nothingOs5 => NothingOs5EditView(
+                          tiles: state.tiles,
+                          selectedTileId: _selectedTileId,
+                          colors: colors,
+                          font: state.selectedFont,
+                          brightness: state.brightness,
+                          volume: state.volume,
+                          ringerMode: state.ringerMode,
+                          onTileTap: (id) =>
+                              setState(() => _selectedTileId = id),
+                          onCycleSizeTap: (id) => state.cycleTileSize(id),
+                          onSetExactSize: (id, size) =>
+                              state.setTileExactSize(id, size),
+                          onAddTile: (tile) => state.addTile(tile),
+                          onRemoveTile: (id) {
+                            state.removeTile(id);
+                            setState(() {
+                              _selectedTileId = state.tiles.firstOrNull?.id;
+                            });
+                          },
+                          onReorder: (oldIdx, newIdx) =>
+                              state.reorderTile(oldIdx, newIdx),
+                          onReset: () {
+                            state.resetTiles();
+                            setState(() {
+                              _selectedTileId = state.tiles.firstOrNull?.id;
+                            });
+                          },
+                          onDone: () {
+                            state.flushSave();
+                            setState(() => _isEditMode = false);
+                          },
+                          onOpenApp: () => _handleOpenShadeApp(state),
+                        ),
+                      _ => StandardEditTilesView(
                           tiles: state.tiles,
                           selectedTileId: _selectedTileId,
                           colors: colors,
                           font: state.selectedFont,
                           onTileTap: (id) =>
                               setState(() => _selectedTileId = id),
-                          onResizeTap: (id) => state.toggleTileSize(id),
+                          onResizeTap: (id) => state.cycleTileSize(id),
+                          onSetExactSize: (id, size) =>
+                              state.setTileExactSize(id, size),
                           onAddTile: (tile) => state.addTile(tile),
                           onReorder: (oldIdx, newIdx) =>
                               state.reorderTile(oldIdx, newIdx),
                           impulseNotifier: _tileImpulseNotifier,
-                        ))
+                        ),
+                    }
                   : switch (state.shadeMode) {
+                      ShadeMode.nothingOs5 => NothingOs5ShadeView(
+                          pageController: _pageController,
+                          colors: colors,
+                          font: state.selectedFont,
+                          tiles: state.tiles,
+                          brightness: state.brightness,
+                          volume: state.volume,
+                          ringerMode: state.ringerMode,
+                          batteryLevel: state.batteryLevel,
+                          isCharging: state.isCharging,
+                          carrierName: state.carrierName,
+                          onBrightnessChanged: (v) => state.setBrightness(v),
+                          onVolumeChanged: (v) => state.setVolume(v),
+                          onRingerModeChanged: (m) => state.setRingerMode(m),
+                          onToggleTile: (id) =>
+                              _handleTileTap(id, state, colors),
+                          onLongPressTile: (id) => setState(() {
+                            _isEditMode = true;
+                            _selectedTileId = id;
+                          }),
+                          onResizeTile: (id) => state.cycleTileSize(id),
+                          onPageChanged: (idx) => state.setSplitTabIndex(idx),
+                          onEditTap: () => setState(() {
+                            _isEditMode = true;
+                            _selectedTileId = state.tiles.firstOrNull?.id;
+                          }),
+                          onSettingsTap: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openSettings());
+                            } else {
+                              state.openSettings();
+                            }
+                          },
+                          onPowerTap: () {
+                            ExpressivePowerMenuDialog.show(
+                              context,
+                              colors,
+                              state.selectedFont,
+                            );
+                          },
+                          onOpenHistory: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotificationHistory());
+                            } else {
+                              state.openNotificationHistory();
+                            }
+                          },
+                          onClearAllNotifications: () =>
+                              state.clearAllNotifications(),
+                          mediaTitle: state.mediaTitle,
+                          mediaArtist: state.mediaArtist,
+                          mediaApp: state.mediaApp,
+                          isPlaying: state.isPlaying,
+                          mediaProgress: state.mediaProgress,
+                          mediaArtwork: state.mediaArtwork,
+                          mediaPlayerStyle: state.mediaPlayerStyle,
+                          onPlayPause: () => state.togglePlayPause(),
+                          onSkipNext: () => state.skipNextMedia(),
+                          onSkipPrevious: () => state.skipPreviousMedia(),
+                          onProgressChanged: (v) => state.setMediaProgress(v),
+                          notifications: state.notifications,
+                          notificationStyle: state.notificationStyle,
+                          onDismissNotification: (id) =>
+                              state.dismissNotification(id),
+                          onActionTap: (notif, action) =>
+                              state.performNotificationAction(notif, action),
+                          onReply: (notif, action, text) =>
+                              state.performNotificationAction(
+                            notif,
+                            action,
+                            replyText: text,
+                          ),
+                          onSnoozeNotification: (notif) =>
+                              state.snoozeNotification(
+                            notif.id,
+                            duration: const Duration(hours: 1),
+                          ),
+                          onOpenNotification: (notif) {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotification(notif));
+                            } else {
+                              state.openNotification(notif);
+                            }
+                          },
+                        ),
                       ShadeMode.split => SplitShadeView(
                           pageController: _pageController,
                           colors: colors,
@@ -253,7 +403,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           sliderStyle: state.sliderStyle,
                           onBrightnessChanged: (v) => state.setBrightness(v),
                           onVolumeChanged: (v) => state.setVolume(v),
-                          onToggleTile: (id) => state.toggleTile(id),
+                          onToggleTile: (id) =>
+                              _handleTileTap(id, state, colors),
                           onLongPressTile: (id) => setState(() {
                             _isEditMode = true;
                             _selectedTileId = id;
@@ -276,6 +427,26 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           notificationStyle: state.notificationStyle,
                           onDismissNotification: (id) =>
                               state.dismissNotification(id),
+                          onClearAllNotifications: () =>
+                              state.clearAllNotifications(),
+                          onOpenHistory: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotificationHistory());
+                            } else {
+                              state.openNotificationHistory();
+                            }
+                          },
+                          onNotificationStyleChanged: (style) =>
+                              state.setNotificationStyle(style),
+                          onOpenNotificationSettings: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openAppNotificationSettings());
+                            } else {
+                              state.openAppNotificationSettings();
+                            }
+                          },
                           onActionTap: (notif, action) =>
                               state.performNotificationAction(notif, action),
                           onReply: (notif, action, text) =>
@@ -292,16 +463,6 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                               state.openNotification(notif);
                             }
                           },
-                          appDockEnabled: state.appDockEnabled,
-                          appDockApps: state.appDockApps,
-                          onLaunchApp: (pkg) {
-                            if (widget.onDismissAndExecute != null) {
-                              widget.onDismissAndExecute!(
-                                  () => state.launchApp(pkg));
-                            } else {
-                              state.launchApp(pkg);
-                            }
-                          },
                         ),
                       ShadeMode.unified => UnifiedShadeView(
                           scrollController: _unifiedScrollController,
@@ -315,7 +476,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           onBrightnessChanged: (v) => state.setBrightness(v),
                           onVolumeChanged: (v) => state.setVolume(v),
                           onToggleExpand: _handleUnifiedQsToggle,
-                          onToggleTile: (id) => state.toggleTile(id),
+                          onToggleTile: (id) =>
+                              _handleTileTap(id, state, colors),
                           onLongPressTile: (id) => setState(() {
                             _isEditMode = true;
                             _selectedTileId = id;
@@ -339,6 +501,26 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           notificationStyle: state.notificationStyle,
                           onDismissNotification: (id) =>
                               state.dismissNotification(id),
+                          onClearAllNotifications: () =>
+                              state.clearAllNotifications(),
+                          onOpenHistory: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openNotificationHistory());
+                            } else {
+                              state.openNotificationHistory();
+                            }
+                          },
+                          onNotificationStyleChanged: (style) =>
+                              state.setNotificationStyle(style),
+                          onOpenNotificationSettings: () {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.openAppNotificationSettings());
+                            } else {
+                              state.openAppNotificationSettings();
+                            }
+                          },
                           onActionTap: (notif, action) =>
                               state.performNotificationAction(notif, action),
                           onReply: (notif, action, text) =>
@@ -370,7 +552,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                           brightness: state.brightness,
                           sliderStyle: state.sliderStyle,
                           onBrightnessChanged: (v) => state.setBrightness(v),
-                          onToggleTile: (id) => state.toggleTile(id),
+                          onToggleTile: (id) =>
+                              _handleTileTap(id, state, colors),
                           onLongPressTile: (id) => setState(() {
                             _isEditMode = true;
                             _selectedTileId = id;
@@ -545,6 +728,21 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     );
   }
 
+  void _handleOpenShadeApp(ShadeStateProvider state) {
+    state.flushSave();
+    setState(() {
+      _isEditMode = false;
+      _selectedTileId = null;
+    });
+    if (widget.onOpenShadeApp != null) {
+      widget.onOpenShadeApp!();
+    } else if (widget.onDismissAndExecute != null) {
+      widget.onDismissAndExecute!(() => state.openShadeApp());
+    } else {
+      state.openShadeApp();
+    }
+  }
+
   Widget _buildEditHeaderControls(
     ShadeStateProvider state,
     ExpressiveThemeColors colors,
@@ -573,6 +771,44 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
             },
           ),
           const Spacer(),
+          InkWell(
+            borderRadius: BorderRadius.circular(20),
+            onTap: () {
+              HapticFeedback.lightImpact();
+              _handleOpenShadeApp(state);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+              decoration: BoxDecoration(
+                color: colors.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: colors.activePill.withValues(alpha: 0.35),
+                  width: 1.0,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.tune_rounded,
+                    size: 16,
+                    color: colors.activePill,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Shade App',
+                    style: font.textStyleBuilder(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           _buildCircleHeaderBtn(Icons.replay_rounded, colors, () {
             HapticFeedback.mediumImpact();
             state.resetTiles();
@@ -646,8 +882,8 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       return false;
     }
 
-    // For Split mode, only listen on notifications page (index 0)
-    if (state.shadeMode == ShadeMode.split && state.splitTabIndex != 0) {
+    // For Split modes, only listen on notifications page (index 0)
+    if (state.shadeMode.isSplitLike && state.splitTabIndex != 0) {
       return false;
     }
 

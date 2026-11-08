@@ -7,12 +7,14 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.hardware.camera2.CameraManager
+import android.location.LocationManager
 import android.media.AudioManager
 import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.telephony.TelephonyManager
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 
@@ -35,6 +37,7 @@ class HardwareChannelHandler(
             "setFlashlight" -> setFlashlight(call, result)
             "setBrightness" -> setBrightness(call, result)
             "setVolume" -> setVolume(call, result)
+            "setRingerMode" -> setRingerMode(call, result)
             "toggleAutoRotate" -> toggleAutoRotate(result)
             "toggleDnd" -> toggleDnd(result)
             "toggleBatterySaver" -> toggleBatterySaver(result)
@@ -94,6 +97,18 @@ class HardwareChannelHandler(
                 { Intent(Settings.ACTION_BLUETOOTH_SETTINGS) }
             )
             "openSettings" -> open(result, { Intent(Settings.ACTION_SETTINGS) })
+            "openShadeApp" -> open(
+                result,
+                {
+                    Intent(context, MainActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
+                    }
+                }
+            )
             "openNotificationHistory" -> open(
                 result,
                 { Intent("android.settings.NOTIFICATION_HISTORY") },
@@ -231,6 +246,60 @@ class HardwareChannelHandler(
             val targetVol = (value * maxVol).toInt().coerceIn(0, maxVol)
             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
             result.success(true)
+        } catch (_: Exception) {
+            result.success(false)
+        }
+    }
+
+    private fun setRingerMode(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val mode = (call.argument<Int>("mode") ?: AudioManager.RINGER_MODE_NORMAL).coerceIn(0, 2)
+            val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            val notifManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            val targetRingerMode = when (mode) {
+                0 -> AudioManager.RINGER_MODE_SILENT
+                1 -> AudioManager.RINGER_MODE_VIBRATE
+                else -> AudioManager.RINGER_MODE_NORMAL
+            }
+
+            if ((targetRingerMode == AudioManager.RINGER_MODE_SILENT ||
+                    audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT) &&
+                !notifManager.isNotificationPolicyAccessGranted
+            ) {
+                try {
+                    audioManager.ringerMode = targetRingerMode
+                    onStateChanged()
+                    result.success(true)
+                    return
+                } catch (_: SecurityException) {
+                    SettingsLauncher.startQuietly(
+                        context,
+                        Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                    )
+                    result.success(false)
+                    return
+                }
+            }
+
+            if (targetRingerMode != AudioManager.RINGER_MODE_SILENT &&
+                notifManager.isNotificationPolicyAccessGranted &&
+                notifManager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+            ) {
+                try {
+                    notifManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                } catch (_: Exception) {}
+            }
+
+            audioManager.ringerMode = targetRingerMode
+            onStateChanged()
+            result.success(true)
+        } catch (_: SecurityException) {
+            SettingsLauncher.startQuietly(
+                context,
+                Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+            )
+            result.success(false)
         } catch (_: Exception) {
             result.success(false)
         }

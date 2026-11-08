@@ -109,6 +109,7 @@ object HardwareState {
 
         // 3. Audio & Brightness
         var volumeRatio = 0.5
+        var ringerMode = AudioManager.RINGER_MODE_NORMAL
         var brightnessRatio = 0.5
         var autoRotate = true
         try {
@@ -116,6 +117,7 @@ object HardwareState {
             val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toDouble()
             val curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toDouble()
             volumeRatio = if (maxVol > 0) curVol / maxVol else 0.5
+            ringerMode = audioManager.ringerMode.coerceIn(0, 2)
 
             val brightnessInt = Settings.System.getInt(appContext.contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
             brightnessRatio = brightnessInt.toDouble() / 255.0
@@ -210,6 +212,7 @@ object HardwareState {
             "flashlight" to isTorchOn,
             "brightness" to brightnessRatio,
             "volume" to volumeRatio,
+            "ringerMode" to ringerMode,
             "autoRotate" to autoRotate,
             "dnd" to isDnd,
             "airplane" to isAirplane,

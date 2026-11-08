@@ -12,7 +12,13 @@ class MainActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        SettingsLauncher.setCurrentActivity(this)
         handlePanelIntent(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        SettingsLauncher.setCurrentActivity(this)
     }
 
     override fun onNewIntent(intent: Intent) {

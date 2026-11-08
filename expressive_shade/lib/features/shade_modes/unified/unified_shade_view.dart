@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../models/font_config.dart';
 import '../../../../models/media_player_style.dart';
 import '../../../../models/notification_model.dart';
@@ -50,6 +51,10 @@ class UnifiedShadeView extends StatelessWidget {
   final List<NotificationModel> notifications;
   final NotificationStyle notificationStyle;
   final ValueChanged<String> onDismissNotification;
+  final VoidCallback? onClearAllNotifications;
+  final VoidCallback? onOpenHistory;
+  final ValueChanged<NotificationStyle>? onNotificationStyleChanged;
+  final VoidCallback? onOpenNotificationSettings;
   final void Function(NotificationModel, NotificationAction)? onActionTap;
   final void Function(NotificationModel, NotificationAction, String)? onReply;
   final void Function(NotificationModel)? onOpenNotification;
@@ -88,6 +93,10 @@ class UnifiedShadeView extends StatelessWidget {
     required this.notifications,
     this.notificationStyle = NotificationStyle.android17,
     required this.onDismissNotification,
+    this.onClearAllNotifications,
+    this.onOpenHistory,
+    this.onNotificationStyleChanged,
+    this.onOpenNotificationSettings,
     this.onActionTap,
     this.onReply,
     this.onOpenNotification,
@@ -96,7 +105,12 @@ class UnifiedShadeView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final allRows = packTilesIntoRows(tiles);
+    final bentoPages = packTilesIntoBentoPages(
+      tiles,
+      maxCols: 4,
+      maxRowsPerPage: 5,
+      avoidSpanningCollapsedBoundary: true,
+    );
 
     return ListView(
       controller: scrollController,
@@ -146,7 +160,7 @@ class UnifiedShadeView extends StatelessWidget {
               ),
 
               // 2. Unified Paginated Quick Settings Grid
-              _buildUnifiedPaginatedTilesGrid(allRows),
+              _buildUnifiedPaginatedTilesGrid(bentoPages),
 
               // 3. Drag Handle / Tap to Expand or Collapse
               GestureDetector(
@@ -228,116 +242,400 @@ class UnifiedShadeView extends StatelessWidget {
     );
   }
 
-  Widget _buildUnifiedPaginatedTilesGrid(List<List<QsTileModel>> allRows) {
-    if (allRows.isEmpty) return const SizedBox.shrink();
+  Widget _buildUnifiedPaginatedTilesGrid(List<StandardBentoPage> pages) {
+    if (pages.isEmpty) return const SizedBox.shrink();
 
-    const maxRowsPerPage = 5;
-    final List<List<List<QsTileModel>>> pages = [];
-    for (int i = 0; i < allRows.length; i += maxRowsPerPage) {
-      final end = (i + maxRowsPerPage < allRows.length)
-          ? i + maxRowsPerPage
-          : allRows.length;
-      pages.add(allRows.sublist(i, end));
+    int maxRows = 2;
+    for (final p in pages) {
+      if (p.totalRows > maxRows) maxRows = p.totalRows;
     }
 
     return UnifiedPaginatedTilesContainer(
       colors: colors,
-      pages: pages,
+      pageCount: pages.length,
+      maxRows: maxRows,
       bouncyAnimation: bouncyAnimation,
       builder: (context, pageIndex) {
-        final pageRows = pages[pageIndex];
-        final topTwo = pageRows.take(2).toList();
-        final rest = pageRows.skip(2).toList();
+        final page = pages[pageIndex];
+        return _buildBentoTilesPage(page, pageIndex * 5);
+      },
+    );
+  }
 
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildTilesGridPage(topTwo, pageIndex * maxRowsPerPage),
-            if (rest.isNotEmpty) ...[
-              ClipRect(
-                child: SizeTransition(
-                  sizeFactor: bouncyAnimation,
-                  alignment: Alignment.topCenter,
-                  child: FadeTransition(
-                    opacity: bouncyAnimation,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox(height: 12),
-                        _buildTilesGridPage(rest, pageIndex * maxRowsPerPage + 2),
-                      ],
-                    ),
-                  ),
+  Widget _buildBentoTilesPage(StandardBentoPage page, int baseRowIndex) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const double colSpacing = 10.0;
+        const double rowSpacing = 12.0;
+        const double rowHeight = 68.0;
+        final double maxW = constraints.maxWidth;
+        final double cellWidth = (maxW - (3 * colSpacing)) / 4.0;
+        final int rowsCount = page.totalRows.clamp(1, 5);
+        final double totalH =
+            (rowsCount * rowHeight) + ((rowsCount - 1) * rowSpacing);
+
+        return SizedBox(
+          width: maxW,
+          height: totalH,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              for (final p in page.placements)
+                Positioned(
+                  key: ValueKey('unified_tile_${p.tile.id}'),
+                  left: p.col * (cellWidth + colSpacing),
+                  top: p.row * (rowHeight + rowSpacing),
+                  width: (p.colSpan * cellWidth) +
+                      ((p.colSpan - 1) * colSpacing),
+                  height: (p.rowSpan * rowHeight) +
+                      ((p.rowSpan - 1) * rowSpacing),
+                  child: p.row >= 2
+                      ? FadeTransition(
+                          opacity: bouncyAnimation,
+                          child: ExpressivePill(
+                            tile: p.tile,
+                            colors: colors,
+                            font: font,
+                            row: baseRowIndex + p.row,
+                            col: p.col,
+                            impulseNotifier: impulseNotifier,
+                            onResizeTap: () => onResizeTile(p.tile.id),
+                            onTap: () => onToggleTile(p.tile.id),
+                            onLongPress: () => onLongPressTile(p.tile.id),
+                          ),
+                        )
+                      : ExpressivePill(
+                          tile: p.tile,
+                          colors: colors,
+                          font: font,
+                          row: baseRowIndex + p.row,
+                          col: p.col,
+                          impulseNotifier: impulseNotifier,
+                          onResizeTap: () => onResizeTile(p.tile.id),
+                          onTap: () => onToggleTile(p.tile.id),
+                          onLongPress: () => onLongPressTile(p.tile.id),
+                        ),
                 ),
-              ),
             ],
-          ],
+          ),
         );
       },
     );
   }
 
-  Widget _buildTilesGridPage(List<List<QsTileModel>> rows, int baseRowIndex) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (int r = 0; r < rows.length; r++) ...[
-          if (r > 0) const SizedBox(height: 12),
-          Row(
-            children: [
-              for (int t = 0; t < rows[r].length; t++) ...[
-                if (t > 0) const SizedBox(width: 10),
-                Expanded(
-                  flex: rows[r][t].isWide ? 2 : 1,
-                  child: ExpressivePill(
-                    tile: rows[r][t],
-                    colors: colors,
-                    font: font,
-                    row: baseRowIndex + r,
-                    col: t,
-                    impulseNotifier: impulseNotifier,
-                    onResizeTap: () => onResizeTile(rows[r][t].id),
-                    onTap: () => onToggleTile(rows[r][t].id),
-                    onLongPress: () => onLongPressTile(rows[r][t].id),
-                  ),
-                ),
-              ],
-              if (rowSpan(rows[r]) < 4) Spacer(flex: 4 - rowSpan(rows[r])),
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-
   Widget _buildNotificationsContainer(BuildContext context) {
     final containerBg = colors.notificationContainerBackground;
+    final pillBtnBg = colors.notificationCardBackground;
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 28),
       decoration: BoxDecoration(
         color: containerBg,
         borderRadius: BorderRadius.circular(32),
-        border: Border.all(
-          color: colors.isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.06),
-          width: 1.0,
-        ),
       ),
-      padding: const EdgeInsets.fromLTRB(14, 18, 14, 28),
-      child: NotificationList(
-        notifications: notifications,
-        colors: colors,
-        font: font,
-        style: notificationStyle,
-        onDismiss: onDismissNotification,
-        onActionTap: onActionTap,
-        onReply: onReply,
-        onTap: onOpenNotification,
-        onSnooze: onSnoozeNotification,
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          NotificationList(
+            notifications: notifications,
+            colors: colors,
+            font: font,
+            style: notificationStyle,
+            onDismiss: onDismissNotification,
+            onActionTap: onActionTap,
+            onReply: onReply,
+            onTap: onOpenNotification,
+            onSnooze: onSnoozeNotification,
+          ),
+          const SizedBox(height: 6),
+
+          // Bottom Notification Tray Footer Bar (History | Clear all | Notification Type)
+          Row(
+            children: [
+              // 1. Notification History Pill Button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onOpenHistory?.call();
+                  },
+                  child: Container(
+                    width: 68,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: pillBtnBg,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.history_rounded,
+                        size: 20,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // 2. Center "Clear all" Stadium Pill Button
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      onClearAllNotifications?.call();
+                    },
+                    child: Container(
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: pillBtnBg,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Clear all',
+                          style: font.textStyleBuilder(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // 3. Notification Type / Settings Pill Button (Bell + Gear badge)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _showNotificationTypeSheet(context);
+                  },
+                  child: Container(
+                    width: 68,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: pillBtnBg,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Center(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_rounded,
+                            size: 19,
+                            color: colors.textPrimary,
+                          ),
+                          Positioned(
+                            right: -4,
+                            top: -2,
+                            child: Container(
+                              padding: const EdgeInsets.all(1),
+                              decoration: BoxDecoration(
+                                color: pillBtnBg,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.settings_rounded,
+                                size: 10,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
+    );
+  }
+
+  void _showNotificationTypeSheet(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (ctx) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                decoration: BoxDecoration(
+                  color: colors.background,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: colors.textPrimary.withValues(alpha: 0.12),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.notifications_active_rounded,
+                              size: 20,
+                              color: colors.activePill,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Notification Type',
+                              style: font.textStyleBuilder(
+                                fontSize: 17.0,
+                                fontWeight: FontWeight.w700,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            size: 20,
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    for (final styleOption in NotificationStyle.values) ...[
+                      Builder(
+                        builder: (context) {
+                          final isSelected = styleOption == notificationStyle;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                onNotificationStyleChanged?.call(styleOption);
+                                Navigator.of(ctx).pop();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 11,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? colors.activePill.withValues(alpha: 0.18)
+                                      : colors.surface,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? colors.activePill
+                                        : Colors.transparent,
+                                    width: 1.4,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            styleOption.displayName,
+                                            style: font.textStyleBuilder(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: colors.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            styleOption.description,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: font.textStyleBuilder(
+                                              fontSize: 11.5,
+                                              color: colors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isSelected)
+                                      Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 20,
+                                        color: colors.activePill,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                    if (onOpenNotificationSettings != null) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Navigator.of(ctx).pop();
+                            onOpenNotificationSettings!();
+                          },
+                          icon: Icon(
+                            Icons.settings_outlined,
+                            size: 16,
+                            color: colors.textPrimary,
+                          ),
+                          label: Text(
+                            'System Notification Settings',
+                            style: font.textStyleBuilder(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

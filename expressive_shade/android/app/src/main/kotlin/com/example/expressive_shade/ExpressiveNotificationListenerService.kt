@@ -64,7 +64,9 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
             val pm = packageManager
             pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
         } catch (e: Exception) {
-            packageName
+            packageName.substringAfterLast('.').replaceFirstChar {
+                if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString()
+            }
         }
         appLabelCache[packageName] = label
         return label

@@ -28,34 +28,48 @@ void main() {
         lessThan(HSLColor.fromColor(colors.background).lightness),
       );
 
-      // 2. Caramel Earth
-      final caramelPreset = ThemePreset.presets.firstWhere((p) => p.id == 'caramel_earth');
-      state.selectPreset(caramelPreset);
-      expect(state.selectedPreset.id, 'caramel_earth');
+      // 2. Monochrome Black & Monochrome White
+      final monoBlackPreset = ThemePreset.presets.firstWhere((p) => p.id == 'monochrome_black');
+      state.selectPreset(monoBlackPreset);
+      expect(state.selectedPreset.id, 'monochrome_black');
 
       colors = ExpressiveThemeColors.fromSettings(
         source: state.themeSource,
         preset: state.selectedPreset,
         custom: state.customTheme,
       );
-      expect(colors.background, caramelPreset.background);
-      expect(colors.activePill, caramelPreset.activePill);
+      expect(colors.background, const Color(0xFF000000));
+      expect(colors.activePill, const Color(0xFFFFFFFF));
+      expect(colors.isDark, isTrue);
+
+      final monoWhitePreset = ThemePreset.presets.firstWhere((p) => p.id == 'monochrome_white');
+      state.selectPreset(monoWhitePreset);
+      expect(state.selectedPreset.id, 'monochrome_white');
+
+      colors = ExpressiveThemeColors.fromSettings(
+        source: state.themeSource,
+        preset: state.selectedPreset,
+        custom: state.customTheme,
+      );
+      expect(colors.background, const Color(0xFFFFFFFF));
+      expect(colors.activePill, const Color(0xFFD4D4D8));
+      expect(colors.isDark, isFalse);
       expect(
         HSLColor.fromColor(colors.notificationContainerBackground).lightness,
         lessThan(HSLColor.fromColor(colors.background).lightness),
       );
 
-      // 3. Lavender Mist
-      final lavenderPreset = ThemePreset.presets.firstWhere((p) => p.id == 'lavender_mist');
-      state.selectPreset(lavenderPreset);
-      expect(state.selectedPreset.id, 'lavender_mist');
+      // 3. Cyber Acid
+      final cyberPreset = ThemePreset.presets.firstWhere((p) => p.id == 'cyber_acid');
+      state.selectPreset(cyberPreset);
+      expect(state.selectedPreset.id, 'cyber_acid');
 
       colors = ExpressiveThemeColors.fromSettings(
         source: state.themeSource,
         preset: state.selectedPreset,
         custom: state.customTheme,
       );
-      expect(colors.background, lavenderPreset.background);
+      expect(colors.background, cyberPreset.background);
       expect(
         HSLColor.fromColor(colors.notificationContainerBackground).lightness,
         lessThan(HSLColor.fromColor(colors.background).lightness),

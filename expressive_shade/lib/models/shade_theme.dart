@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum ThemeSource {
-  system,
-  preset,
-  custom,
-}
+enum ThemeSource { system, preset, custom }
 
 class ThemePreset {
   final String id;
@@ -39,7 +35,8 @@ class ThemePreset {
     ThemePreset(
       id: 'forest_green',
       name: 'Forest Green',
-      description: 'Tactile sage & deep botanical forest tone from the M3 Expressive leak',
+      description:
+          'Tactile sage & deep botanical forest tone from the M3 Expressive leak',
       primarySeed: Color(0xFF2E5E43),
       background: Color(0xFF101712),
       activePill: Color(0xFFB2DEC3),
@@ -51,17 +48,33 @@ class ThemePreset {
       isDark: true,
     ),
     ThemePreset(
-      id: 'caramel_earth',
-      name: 'Caramel Earth',
-      description: 'Warm organic toasted caramel, terracotta & amber from Android 17 leak',
-      primarySeed: Color(0xFFB45309),
-      background: Color(0xFFE8D4C1),
-      activePill: Color(0xFFA65C23),
-      onActivePill: Color(0xFFFFFFFF),
-      inactivePill: Color(0xFFFBF6F0),
-      onInactivePill: Color(0xFF2D1E14),
-      sliderTrack: Color(0xFFDECABA),
-      sliderThumb: Color(0xFFA65C23),
+      id: 'monochrome_black',
+      name: 'Monochrome Black',
+      description:
+          'Pure AMOLED black dark mode with stark white active pills and graphite surfaces',
+      primarySeed: Color(0xFFFFFFFF),
+      background: Color(0xFF000000),
+      activePill: Color(0xFFFFFFFF),
+      onActivePill: Color(0xFF000000),
+      inactivePill: Color(0xFF1A1A1A),
+      onInactivePill: Color(0xFFE5E5E5),
+      sliderTrack: Color(0xFF262626),
+      sliderThumb: Color(0xFFFFFFFF),
+      isDark: true,
+    ),
+    ThemePreset(
+      id: 'monochrome_white',
+      name: 'Monochrome White',
+      description:
+          'Pure white light mode with soft silver-grey active pills and alabaster surfaces',
+      primarySeed: Color(0xFFD4D4D8),
+      background: Color(0xFFFFFFFF),
+      activePill: Color(0xFFD4D4D8),
+      onActivePill: Color(0xFF27272A),
+      inactivePill: Color(0xFFF2F2F5),
+      onInactivePill: Color(0xFF52525B),
+      sliderTrack: Color(0xFFF2F2F5),
+      sliderThumb: Color(0xFFD4D4D8),
       isDark: false,
     ),
     ThemePreset(
@@ -81,7 +94,8 @@ class ThemePreset {
     ThemePreset(
       id: 'amoled_stealth',
       name: 'Stealth Indigo',
-      description: 'Pure black dark mode with electric indigo and crisp modern slate light mode',
+      description:
+          'Pure black dark mode with electric indigo and crisp modern slate light mode',
       primarySeed: Color(0xFF6366F1),
       background: Color(0xFF000000),
       activePill: Color(0xFFC7D2FE),
@@ -93,17 +107,18 @@ class ThemePreset {
       isDark: true,
     ),
     ThemePreset(
-      id: 'lavender_mist',
-      name: 'Lavender Mist',
-      description: 'Delicate pastel violet and expressive twilight dusk tones',
-      primarySeed: Color(0xFF8B5CF6),
-      background: Color(0xFF1A1326),
-      activePill: Color(0xFFDDD6FE),
-      onActivePill: Color(0xFF30106B),
-      inactivePill: Color(0xFF2C223D),
-      onInactivePill: Color(0xFFEDE8FD),
-      sliderTrack: Color(0xFF2C223D),
-      sliderThumb: Color(0xFFDDD6FE),
+      id: 'cyber_acid',
+      name: 'Cyber Acid',
+      description:
+          'Deep midnight synthwave plum contrasted with electric acid lime & hot coral',
+      primarySeed: Color(0xFFA3E635),
+      background: Color(0xFF120B1E),
+      activePill: Color(0xFFD9F970),
+      onActivePill: Color(0xFF1D2800),
+      inactivePill: Color(0xFF25183B),
+      onInactivePill: Color(0xFFF3E8FF),
+      sliderTrack: Color(0xFF31204D),
+      sliderThumb: Color(0xFFFF6B9D),
       isDark: true,
     ),
     ThemePreset(
@@ -149,31 +164,18 @@ class ThemePreset {
       isDark: true,
     ),
     ThemePreset(
-      id: 'midnight_navy',
-      name: 'Midnight Navy',
-      description: 'Deep oceanic navy and ice blue high-contrast accents',
-      primarySeed: Color(0xFF1D4ED8),
-      background: Color(0xFF0B132B),
-      activePill: Color(0xFF93C5FD),
-      onActivePill: Color(0xFF172554),
-      inactivePill: Color(0xFF1E293B),
-      onInactivePill: Color(0xFFDBEAFE),
-      sliderTrack: Color(0xFF1E293B),
-      sliderThumb: Color(0xFF93C5FD),
-      isDark: true,
-    ),
-    ThemePreset(
-      id: 'emerald_botanical',
-      name: 'Emerald Botanical',
-      description: 'Lush vibrant emerald and crisp mint jade highlights',
-      primarySeed: Color(0xFF059669),
-      background: Color(0xFF061A14),
-      activePill: Color(0xFF6EE7B7),
-      onActivePill: Color(0xFF022C22),
-      inactivePill: Color(0xFF133328),
-      onInactivePill: Color(0xFFD1FAE5),
-      sliderTrack: Color(0xFF133328),
-      sliderThumb: Color(0xFF6EE7B7),
+      id: 'terracotta_teal',
+      name: 'Lagoon & Terracotta',
+      description:
+          'Abyssal petrol teal balanced with warm sun-baked terracotta coral',
+      primarySeed: Color(0xFFF97316),
+      background: Color(0xFF0A1B1F),
+      activePill: Color(0xFFFF9B73),
+      onActivePill: Color(0xFF3B1104),
+      inactivePill: Color(0xFF163138),
+      onInactivePill: Color(0xFFD9F2F7),
+      sliderTrack: Color(0xFF1E4049),
+      sliderThumb: Color(0xFFFF9B73),
       isDark: true,
     ),
   ];

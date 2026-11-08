@@ -199,11 +199,12 @@ class _ExpressivePillState extends State<ExpressivePill>
         builder: (context, child) {
           final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
           final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
-          final scaleY = (1.0 - (hSquish / 68.0)).clamp(0.85, 1.0);
+          final targetH = tile.is2x2 ? 148.0 : 68.0;
+          final scaleY = (1.0 - (hSquish / targetH)).clamp(0.85, 1.0);
           final scaleX = (1.0 - (wSquish / 140.0)).clamp(0.85, 1.0);
 
           return SizedBox(
-            height: 68.0,
+            height: targetH,
             child: Transform.scale(
               scaleX: scaleX,
               scaleY: scaleY,
@@ -216,9 +217,11 @@ class _ExpressivePillState extends State<ExpressivePill>
           onTapUp: widget.onInnerButtonTap == null ? _handleTapUp : null,
           onTapCancel: widget.onInnerButtonTap == null ? _handleTapCancel : null,
           onLongPress: widget.onLongPress,
-          child: tile.isWide
-              ? _buildWidePill(tile, bgColor, fgColor, colors, font)
-              : _buildSquircleTile(tile, bgColor, fgColor, colors),
+          child: tile.is2x2
+              ? _build2x2ExpressiveTile(tile, bgColor, fgColor, colors, font)
+              : (tile.isWide
+                  ? _buildWidePill(tile, bgColor, fgColor, colors, font)
+                  : _buildSquircleTile(tile, bgColor, fgColor, colors)),
         ),
       ),
     );
@@ -437,6 +440,102 @@ class _ExpressivePillState extends State<ExpressivePill>
             : Border.all(color: Colors.transparent, width: 2.2),
       ),
       child: Center(child: Icon(tile.icon, size: 26, color: fgColor)),
+    );
+  }
+
+  Widget _build2x2ExpressiveTile(
+    QsTileModel tile,
+    Color bgColor,
+    Color fgColor,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.fastOutSlowIn,
+      height: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(30),
+        border: widget.isEditing && widget.isSelected
+            ? Border.all(color: Colors.white, width: 2.2)
+            : Border.all(color: Colors.transparent, width: 2.2),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxH = constraints.maxHeight;
+          final badgeSize = (maxH * 0.38).clamp(28.0, 46.0);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: badgeSize,
+                    height: badgeSize,
+                    decoration: BoxDecoration(
+                      color: fgColor.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(badgeSize * 0.36),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        tile.icon,
+                        size: (badgeSize * 0.5).clamp(16.0, 24.0),
+                        color: fgColor,
+                      ),
+                    ),
+                  ),
+                  if (tile.hasDetails)
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: fgColor.withValues(alpha: 0.6),
+                    ),
+                ],
+              ),
+              if (maxH >= 56.0)
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          tile.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: font.textStyleBuilder(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w700,
+                            color: fgColor,
+                          ),
+                        ),
+                      ),
+                      if (tile.subtitle != null && maxH >= 84.0) ...[
+                        const SizedBox(height: 2),
+                        Flexible(
+                          child: Text(
+                            tile.subtitle!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: font.textStyleBuilder(
+                              fontSize: 12.0,
+                              color: fgColor.withValues(alpha: 0.72),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
     );
   }
 }

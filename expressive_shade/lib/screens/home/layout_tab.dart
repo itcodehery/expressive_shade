@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import '../../models/app_dock_item.dart';
 import '../../models/font_config.dart';
 import '../../models/media_player_style.dart';
 import '../../models/notification_model.dart';
@@ -10,7 +9,6 @@ import '../../models/qs_tile_model.dart';
 import '../../models/shade_mode.dart';
 import '../../models/slider_style.dart';
 import '../../providers/shade_state_provider.dart';
-import '../../services/system_apps_service.dart';
 import '../../theme/m3_expressive_theme.dart';
 import '../../features/notifications/notification_card.dart';
 import '../../widgets/expressive_media_card.dart';
@@ -88,11 +86,13 @@ class LayoutTab extends StatelessWidget {
                           ),
                           child: Center(
                             child: Icon(
-                              mode == ShadeMode.split
-                                  ? Icons.splitscreen_rounded
-                                  : (mode == ShadeMode.smart
-                                        ? Icons.grid_view_rounded
-                                        : Icons.view_stream_rounded),
+                              switch (mode) {
+                                ShadeMode.split => Icons.splitscreen_rounded,
+                                ShadeMode.smart => Icons.grid_view_rounded,
+                                ShadeMode.nothingOs5 =>
+                                  Icons.dashboard_customize_rounded,
+                                ShadeMode.unified => Icons.view_stream_rounded,
+                              },
                               size: 24,
                               color: isSelected
                                   ? colors.onActivePill
@@ -169,10 +169,6 @@ class LayoutTab extends StatelessWidget {
             ),
           );
         }),
-        if (state.shadeMode == ShadeMode.split) ...[
-          const SizedBox(height: 12),
-          _buildAppDockSection(context, state, colors),
-        ],
         const SizedBox(height: 28),
         Text(
           'Slider Style',
@@ -761,6 +757,7 @@ class LayoutTab extends StatelessWidget {
         ShadeMode.split => _buildSplitPreview(colors, font),
         ShadeMode.unified => _buildUnifiedPreview(colors, font),
         ShadeMode.smart => _buildMatrixPreview(colors, font),
+        ShadeMode.nothingOs5 => _buildNothingOs5Preview(colors, font),
       },
     );
   }
@@ -1261,1069 +1258,240 @@ class LayoutTab extends StatelessWidget {
     );
   }
 
-  Widget _buildAppDockSection(
-    BuildContext context,
-    ShadeStateProvider state,
-    ExpressiveThemeColors colors,
-  ) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: state.appDockEnabled
-              ? colors.activePill.withValues(alpha: 0.5)
-              : colors.isDark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.06),
-          width: state.appDockEnabled ? 2.0 : 1.0,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+  Widget _buildNothingOs5Preview(ExpressiveThemeColors colors, FontConfig font) {
+    return Row(
+      children: [
+        // Left pane: Hero Media + Notification card + Bottom pill bar
+        Expanded(
+          child: Column(
             children: [
+              // Hero media box
               Container(
-                width: 44,
-                height: 44,
+                height: 28,
+                padding: const EdgeInsets.symmetric(horizontal: 6),
                 decoration: BoxDecoration(
-                  color: state.appDockEnabled
-                      ? colors.activePill
-                      : colors.inactivePill,
-                  borderRadius: BorderRadius.circular(14),
+                  color: const Color(0xFF1E2028),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Center(
-                  child: Icon(
-                    Icons.apps_rounded,
-                    size: 24,
-                    color: state.appDockEnabled
-                        ? colors.onActivePill
-                        : colors.textPrimary,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        Text(
-                          'Split Shade App Dock',
-                          style: state.selectedFont.textStyleBuilder(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: colors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: colors.activePill.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            'NEW',
-                            style: state.selectedFont.textStyleBuilder(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w800,
-                              color: colors.activePill,
-                            ),
-                          ),
-                        ),
-                      ],
+                    const Icon(
+                      Icons.music_note_rounded,
+                      size: 10,
+                      color: Colors.white70,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'Pin up to 8 apps below notifications for rapid access.',
-                      style: state.selectedFont.textStyleBuilder(
-                        fontSize: 12.5,
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: state.appDockEnabled,
-                activeTrackColor: colors.activePill,
-                activeThumbColor: colors.onActivePill,
-                onChanged: (enabled) {
-                  HapticFeedback.lightImpact();
-                  state.setAppDockEnabled(enabled);
-                },
-              ),
-            ],
-          ),
-          if (state.appDockEnabled) ...[
-            const SizedBox(height: 18),
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-
-            // Live Preview of the App Dock
-            Text(
-              'Dock Appearance Preview',
-              style: state.selectedFont.textStyleBuilder(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 10),
-            _buildAppDockPreview(context, state, colors),
-            const SizedBox(height: 20),
-
-            // Selected Apps Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Pinned Applications (${state.appDockApps.length}/8)',
-                  style: state.selectedFont.textStyleBuilder(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                if (state.appDockApps.length < 8)
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => _openAppPicker(context, state, colors),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.add_circle_rounded,
-                            size: 16,
-                            color: colors.activePill,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Add App',
-                            style: state.selectedFont.textStyleBuilder(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: colors.activePill,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            if (state.appDockApps.isEmpty)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
-                decoration: BoxDecoration(
-                  color: colors.background.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: colors.textSecondary.withValues(alpha: 0.15),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.touch_app_rounded,
-                      size: 32,
-                      color: colors.textSecondary.withValues(alpha: 0.6),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'No apps in dock yet',
-                      style: state.selectedFont.textStyleBuilder(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: colors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Tap "Add App" to pick applications from your phone and choose unique Quick Settings tile colors.',
-                      textAlign: TextAlign.center,
-                      style: state.selectedFont.textStyleBuilder(
-                        fontSize: 12,
-                        color: colors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colors.activePill,
-                        foregroundColor: colors.onActivePill,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Container(
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white70,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      icon: const Icon(Icons.add_rounded, size: 18),
-                      label: const Text('Add First App'),
-                      onPressed: () => _openAppPicker(context, state, colors),
                     ),
-                  ],
-                ),
-              )
-            else
-              Column(
-                children: [
-                  for (final app in state.appDockApps) ...[
+                    const SizedBox(width: 4),
                     Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
+                      width: 16,
+                      height: 11,
                       decoration: BoxDecoration(
-                        color: colors.background.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: colors.textSecondary.withValues(alpha: 0.12),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          _AppIconWidget(
-                            packageName: app.packageName,
-                            appName: app.appName,
-                            fallbackIcon: Icons.apps_rounded,
-                            size: 32,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  app.appName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: state.selectedFont.textStyleBuilder(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: colors.textPrimary,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  app.packageName,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: state.selectedFont.textStyleBuilder(
-                                    fontSize: 11,
-                                    color: colors.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Color swatch button
-                          InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () => _openColorPicker(
-                              context,
-                              state,
-                              colors,
-                              app,
-                            ),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: app.color.withValues(alpha: 0.18),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: app.color,
-                                  width: 1.5,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 14,
-                                    height: 14,
-                                    decoration: BoxDecoration(
-                                      color: app.color,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Icon(
-                                    Icons.color_lens_rounded,
-                                    size: 14,
-                                    color: app.color,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Delete button
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline_rounded,
-                              size: 20,
-                            ),
-                            color: Colors.redAccent.withValues(alpha: 0.8),
-                            splashRadius: 20,
-                            onPressed: () {
-                              HapticFeedback.lightImpact();
-                              state.removeAppDockItem(app.packageName);
-                            },
-                          ),
-                        ],
+                        color: const Color(0xFFDDE1FF),
+                        borderRadius: BorderRadius.circular(6),
                       ),
                     ),
                   ],
-                ],
-              ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAppDockPreview(
-    BuildContext context,
-    ShadeStateProvider state,
-    ExpressiveThemeColors colors,
-  ) {
-    if (state.appDockApps.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: colors.background,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: colors.isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : Colors.black.withValues(alpha: 0.06),
-          ),
-        ),
-        child: Center(
-          child: Text(
-            'Empty Dock (Add apps below to preview)',
-            style: state.selectedFont.textStyleBuilder(
-              fontSize: 12,
-              color: colors.textSecondary,
-            ),
-          ),
-        ),
-      );
-    }
-
-    final rows = <List<AppDockItem>>[];
-    for (int i = 0; i < state.appDockApps.length; i += 4) {
-      final end = (i + 4 < state.appDockApps.length)
-          ? i + 4
-          : state.appDockApps.length;
-      rows.add(state.appDockApps.sublist(i, end));
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: colors.background,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: colors.isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.06),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (int r = 0; r < rows.length; r++) ...[
-            if (r > 0) const SizedBox(height: 10),
-            Row(
-              children: [
-                for (int c = 0; c < rows[r].length; c++) ...[
-                  if (c > 0) const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: rows[r][c].color,
-                            borderRadius: BorderRadius.circular(18),
-                            boxShadow: [
-                              BoxShadow(
-                                color: rows[r][c].color.withValues(alpha: 0.35),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: _AppIconWidget(
-                              packageName: rows[r][c].packageName,
-                              appName: rows[r][c].appName,
-                              fallbackIcon: Icons.apps_rounded,
-                              size: 26,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          rows[r][c].appName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: state.selectedFont.textStyleBuilder(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w600,
-                            color: colors.textPrimary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-                if (rows[r].length < 4)
-                  for (int s = 0; s < 4 - rows[r].length; s++) ...[
-                    const SizedBox(width: 8),
-                    const Spacer(),
-                  ],
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  void _openAppPicker(
-    BuildContext context,
-    ShadeStateProvider state,
-    ExpressiveThemeColors colors,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => _AppPickerBottomSheet(
-        state: state,
-        colors: colors,
-        onAppSelected: (appInfo) {
-          Navigator.pop(sheetContext);
-          _openColorPicker(
-            context,
-            state,
-            colors,
-            AppDockItem(
-              packageName: appInfo.packageName,
-              appName: appInfo.appName,
-              colorValue: _suggestedColors[state.appDockApps.length %
-                  _suggestedColors.length],
-            ),
-            isNew: true,
-          );
-        },
-      ),
-    );
-  }
-
-  void _openColorPicker(
-    BuildContext context,
-    ShadeStateProvider state,
-    ExpressiveThemeColors colors,
-    AppDockItem item, {
-    bool isNew = false,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => _TileColorPickerBottomSheet(
-        state: state,
-        colors: colors,
-        initialItem: item,
-        isNew: isNew,
-      ),
-    );
-  }
-
-  static const List<int> _suggestedColors = [
-    0xFF1E88E5, // Cobalt Blue
-    0xFF00897B, // Emerald Teal
-    0xFFFF5722, // Flame Orange
-    0xFF7E57C2, // Lavender Violet
-    0xFFE53935, // Crimson Red
-    0xFFFFB300, // Sunset Gold
-    0xFF00ACC1, // Electric Teal
-    0xFFD81B60, // Hot Magenta
-    0xFF2E7D32, // Mint Green
-    0xFF3949AB, // Royal Indigo
-    0xFF8E24AA, // Orchid Purple
-    0xFF546E7A, // Slate Steel
-    0xFF880E4F, // Deep Maroon
-    0xFF0288D1, // Cyan Sky
-    0xFF263238, // Dark Charcoal
-    0xFF6D4C41, // Mocha Bronze
-  ];
-}
-
-class _AppPickerBottomSheet extends StatefulWidget {
-  final ShadeStateProvider state;
-  final ExpressiveThemeColors colors;
-  final ValueChanged<InstalledAppInfo> onAppSelected;
-
-  const _AppPickerBottomSheet({
-    required this.state,
-    required this.colors,
-    required this.onAppSelected,
-  });
-
-  @override
-  State<_AppPickerBottomSheet> createState() => _AppPickerBottomSheetState();
-}
-
-class _AppPickerBottomSheetState extends State<_AppPickerBottomSheet> {
-  final TextEditingController _searchController = TextEditingController();
-  List<InstalledAppInfo> _allApps = [];
-  List<InstalledAppInfo> _filteredApps = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadApps();
-  }
-
-  Future<void> _loadApps() async {
-    final apps = await SystemAppsService.getInstalledApps();
-    final dockedPackages =
-        widget.state.appDockApps.map((a) => a.packageName).toSet();
-    final available =
-        apps.where((a) => !dockedPackages.contains(a.packageName)).toList();
-
-    if (mounted) {
-      setState(() {
-        _allApps = available;
-        _filteredApps = available;
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _onSearchChanged(String query) {
-    final q = query.trim().toLowerCase();
-    setState(() {
-      if (q.isEmpty) {
-        _filteredApps = _allApps;
-      } else {
-        _filteredApps = _allApps
-            .where(
-              (a) =>
-                  a.appName.toLowerCase().contains(q) ||
-                  a.packageName.toLowerCase().contains(q),
-            )
-            .toList();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-    final font = widget.state.selectedFont;
-
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.75,
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        border: Border.all(
-          color: colors.isDark
-              ? Colors.white.withValues(alpha: 0.12)
-              : Colors.black.withValues(alpha: 0.08),
-        ),
-      ),
-      child: Column(
-        children: [
-          // Drag handle
-          const SizedBox(height: 12),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: colors.textSecondary.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                Icon(Icons.apps_rounded, color: colors.activePill, size: 24),
-                const SizedBox(width: 10),
-                Text(
-                  'Select App for Dock',
-                  style: font.textStyleBuilder(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${widget.state.appDockApps.length}/8',
-                  style: font.textStyleBuilder(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: colors.activePill,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          // Search box
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: TextField(
-              controller: _searchController,
-              onChanged: _onSearchChanged,
-              style: font.textStyleBuilder(
-                fontSize: 14,
-                color: colors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search installed apps...',
-                hintStyle: font.textStyleBuilder(
-                  fontSize: 14,
-                  color: colors.textSecondary.withValues(alpha: 0.6),
-                ),
-                prefixIcon: Icon(
-                  Icons.search_rounded,
-                  color: colors.textSecondary,
-                  size: 20,
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, size: 18),
-                        onPressed: () {
-                          _searchController.clear();
-                          _onSearchChanged('');
-                        },
-                      )
-                    : null,
-                filled: true,
-                fillColor: colors.background,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
                 ),
               ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _filteredApps.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No applications found',
-                          style: font.textStyleBuilder(
-                            fontSize: 14,
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: _filteredApps.length,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 6,
-                        ),
-                        itemBuilder: (context, index) {
-                          final app = _filteredApps[index];
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            leading: _AppIconWidget(
-                              packageName: app.packageName,
-                              appName: app.appName,
-                              size: 40,
-                            ),
-                            title: Text(
-                              app.appName,
-                              style: font.textStyleBuilder(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: colors.textPrimary,
-                              ),
-                            ),
-                            subtitle: Text(
-                              app.packageName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: font.textStyleBuilder(
-                                fontSize: 12,
-                                color: colors.textSecondary,
-                              ),
-                            ),
-                            trailing: Icon(
-                              Icons.arrow_forward_ios_rounded,
-                              size: 14,
-                              color: colors.textSecondary,
-                            ),
-                            onTap: () {
-                              HapticFeedback.lightImpact();
-                              widget.onAppSelected(app);
-                            },
-                          );
-                        },
-                      ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TileColorPickerBottomSheet extends StatefulWidget {
-  final ShadeStateProvider state;
-  final ExpressiveThemeColors colors;
-  final AppDockItem initialItem;
-  final bool isNew;
-
-  const _TileColorPickerBottomSheet({
-    required this.state,
-    required this.colors,
-    required this.initialItem,
-    required this.isNew,
-  });
-
-  @override
-  State<_TileColorPickerBottomSheet> createState() =>
-      _TileColorPickerBottomSheetState();
-}
-
-class _TileColorPickerBottomSheetState
-    extends State<_TileColorPickerBottomSheet> {
-  late int _selectedColorValue;
-
-  @override
-  void initState() {
-    super.initState();
-    _selectedColorValue = widget.initialItem.colorValue;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = widget.colors;
-    final font = widget.state.selectedFont;
-    final activeColor = Color(_selectedColorValue);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
-      decoration: BoxDecoration(
-        color: colors.surface,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
-        border: Border.all(
-          color: colors.isDark
-              ? Colors.white.withValues(alpha: 0.12)
-              : Colors.black.withValues(alpha: 0.08),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Drag handle
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: colors.textSecondary.withValues(alpha: 0.3),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Icon(Icons.palette_rounded, color: activeColor, size: 24),
-              const SizedBox(width: 10),
+              const SizedBox(height: 5),
+              // Notification card
               Expanded(
-                child: Text(
-                  'Choose Tile Color: ${widget.initialItem.appName}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: font.textStyleBuilder(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-
-          // Live Quick Settings Squircle Tile Preview
-          Container(
-            width: 80,
-            height: 72,
-            decoration: BoxDecoration(
-              color: activeColor,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: activeColor.withValues(alpha: 0.40),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Center(
-              child: _AppIconWidget(
-                packageName: widget.initialItem.packageName,
-                appName: widget.initialItem.appName,
-                size: 38,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            widget.initialItem.appName,
-            style: font.textStyleBuilder(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: colors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 22),
-
-          // 16 Vibrant Color Palettes Grid
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: LayoutTab._suggestedColors.map((colorVal) {
-              final isChosen = colorVal == _selectedColorValue;
-              final col = Color(colorVal);
-              return GestureDetector(
-                onTap: () {
-                  HapticFeedback.selectionClick();
-                  setState(() => _selectedColorValue = colorVal);
-                },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  width: 44,
-                  height: 44,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
                   decoration: BoxDecoration(
-                    color: col,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: isChosen ? Colors.white : Colors.transparent,
-                      width: isChosen ? 3.0 : 0.0,
-                    ),
-                    boxShadow: [
-                      if (isChosen)
-                        BoxShadow(
-                          color: col.withValues(alpha: 0.5),
-                          blurRadius: 8,
-                          spreadRadius: 1,
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: colors.activePill,
+                          shape: BoxShape.circle,
                         ),
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Container(
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: colors.textPrimary.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
-                  child: isChosen
-                      ? const Center(
-                          child: Icon(
-                            Icons.check_rounded,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        )
-                      : null,
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 26),
-
-          // Confirm button
-          SizedBox(
-            width: double.infinity,
-            height: 52,
-            child: ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: activeColor,
-                foregroundColor:
-                    ThemeData.estimateBrightnessForColor(activeColor) ==
-                            Brightness.dark
-                        ? Colors.white
-                        : Colors.black87,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                elevation: 4,
               ),
-              onPressed: () {
-                HapticFeedback.mediumImpact();
-                if (widget.isNew) {
-                  widget.state.addAppDockItem(
-                    widget.initialItem.copyWith(
-                      colorValue: _selectedColorValue,
+              const SizedBox(height: 4),
+              // Bottom pills
+              Row(
+                children: [
+                  Container(
+                    width: 14,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                  );
-                } else {
-                  widget.state.updateAppDockItemColor(
-                    widget.initialItem.packageName,
-                    _selectedColorValue,
-                  );
-                }
-                Navigator.pop(context);
-              },
-              child: Text(
-                widget.isNew ? 'Add to Dock' : 'Save Tile Color',
-                style: font.textStyleBuilder(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: ThemeData.estimateBrightnessForColor(activeColor) ==
-                          Brightness.dark
-                      ? Colors.white
-                      : Colors.black87,
+                  ),
+                  const SizedBox(width: 3),
+                  Container(
+                    width: 14,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 24,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: colors.surface,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        // Right pane: Compact media + 1x2 pills + 1x1 circles + 2x2 vertical sliders
+        Expanded(
+          child: Column(
+            children: [
+              // Compact media
+              Container(
+                height: 18,
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: colors.activePill,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Container(
+                        height: 3.5,
+                        decoration: BoxDecoration(
+                          color: colors.textPrimary.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    Icon(
+                      Icons.pause_rounded,
+                      size: 10,
+                      color: colors.textPrimary,
+                    ),
+                  ],
                 ),
               ),
-            ),
+              const SizedBox(height: 5),
+              // Row of two 1x2 pills
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: colors.activePill,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Container(
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: colors.activePill,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              // Bento bottom area: 2x2 & 1x1 on left, vertical sliders on right
+              Expanded(
+                child: Row(
+                  children: [
+                    // 2x2 Bento square
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: colors.inactivePill,
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '2×2',
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w800,
+                              color: colors.onInactivePill,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    // Two vertical sliders
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: colors.activePill.withValues(alpha: 0.85),
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: colors.activePill,
+                                borderRadius: BorderRadius.circular(99),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AppIconWidget extends StatefulWidget {
-  final String packageName;
-  final String appName;
-  final IconData? fallbackIcon;
-  final double size;
-
-  const _AppIconWidget({
-    required this.packageName,
-    this.appName = '',
-    this.fallbackIcon,
-    this.size = 28,
-  });
-
-  @override
-  State<_AppIconWidget> createState() => _AppIconWidgetState();
-}
-
-class _AppIconWidgetState extends State<_AppIconWidget> {
-  Uint8List? _bytes;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final bytes = await SystemAppsService.getAppIcon(widget.packageName);
-    if (mounted && bytes != null && bytes.isNotEmpty) {
-      setState(() => _bytes = bytes);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _AppIconWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.packageName != widget.packageName) {
-      _load();
-    }
-  }
-
-  IconData _resolveIcon() {
-    if (widget.fallbackIcon != null) return widget.fallbackIcon!;
-    final p = widget.packageName.toLowerCase();
-    final n = widget.appName.toLowerCase();
-    if (p.contains('camera') || n.contains('camera')) return Icons.camera_alt_rounded;
-    if (p.contains('dialer') || p.contains('phone') || n.contains('phone') || n.contains('call')) {
-      return Icons.phone_rounded;
-    }
-    if (p.contains('message') || p.contains('sms') || n.contains('message') || n.contains('chat')) {
-      return Icons.chat_bubble_rounded;
-    }
-    if (p.contains('chrome') || p.contains('browser') || n.contains('browser') || n.contains('web')) {
-      return Icons.language_rounded;
-    }
-    if (p.contains('music') || p.contains('spotify') || n.contains('music') || n.contains('audio')) {
-      return Icons.music_note_rounded;
-    }
-    if (p.contains('gallery') || p.contains('photo') || n.contains('photo') || n.contains('image')) {
-      return Icons.photo_library_rounded;
-    }
-    if (p.contains('clock') || p.contains('alarm') || n.contains('clock') || n.contains('alarm')) {
-      return Icons.access_time_rounded;
-    }
-    if (p.contains('settings') || n.contains('settings')) return Icons.settings_rounded;
-    if (p.contains('mail') || p.contains('gmail') || n.contains('mail')) return Icons.mail_rounded;
-    if (p.contains('map') || n.contains('map')) return Icons.map_rounded;
-    if (p.contains('calc') || n.contains('calc')) return Icons.calculate_rounded;
-    if (p.contains('calendar') || n.contains('calendar')) return Icons.calendar_month_rounded;
-    if (p.contains('video') || p.contains('youtube') || n.contains('video') || n.contains('youtube')) {
-      return Icons.play_arrow_rounded;
-    }
-    return Icons.apps_rounded;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_bytes != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(widget.size * 0.28),
-        child: Image.memory(
-          _bytes!,
-          width: widget.size,
-          height: widget.size,
-          fit: BoxFit.cover,
-          filterQuality: FilterQuality.medium,
         ),
-      );
-    }
-    return Icon(
-      _resolveIcon(),
-      size: widget.size,
-      color: Colors.white70,
+      ],
     );
   }
 }

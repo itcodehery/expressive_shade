@@ -65,24 +65,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
         ),
         actions: [
-          // Quick Dark/Light Toggle Action
-          IconButton(
-            tooltip: state.isDarkMode
-                ? 'Switch to Caramel Light'
-                : 'Switch to Forest Green Dark',
-            icon: Icon(
-              state.isDarkMode
-                  ? Icons.light_mode_rounded
-                  : Icons.dark_mode_rounded,
-              color: themeColors.textPrimary,
-              size: 22,
-            ),
-            onPressed: () {
-              HapticFeedback.lightImpact();
-              state.toggleDarkLightMode();
-            },
-          ),
-          const SizedBox(width: 4),
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -94,21 +76,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  state.shadeMode == ShadeMode.split
-                      ? Icons.splitscreen_rounded
-                      : (state.shadeMode == ShadeMode.smart
-                            ? Icons.grid_view_rounded
-                            : Icons.view_stream_rounded),
+                  switch (state.shadeMode) {
+                    ShadeMode.split => Icons.splitscreen_rounded,
+                    ShadeMode.smart => Icons.grid_view_rounded,
+                    ShadeMode.nothingOs5 => Icons.dashboard_customize_rounded,
+                    ShadeMode.unified => Icons.view_stream_rounded,
+                  },
                   size: 16,
                   color: themeColors.activePill,
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  state.shadeMode == ShadeMode.split
-                      ? 'Split'
-                      : (state.shadeMode == ShadeMode.smart
-                            ? 'Matrix'
-                            : 'Unified'),
+                  switch (state.shadeMode) {
+                    ShadeMode.split => 'Split',
+                    ShadeMode.smart => 'Matrix',
+                    ShadeMode.nothingOs5 => 'NothingOS 5',
+                    ShadeMode.unified => 'Unified',
+                  },
                   style: state.selectedFont.textStyleBuilder(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -123,7 +107,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: IndexedStack(
         index: _currentNavIndex,
         children: [
-          InteractiveShadeCanvas(colors: themeColors),
+          InteractiveShadeCanvas(
+            colors: themeColors,
+            onOpenShadeApp: () {
+              setState(() {
+                _currentNavIndex = 1;
+              });
+            },
+          ),
           LayoutTab(colors: themeColors),
           ThemeTab(colors: themeColors),
           FontTab(colors: themeColors),

@@ -148,37 +148,14 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     }
   }
 
-  Border _computeBorder(ExpressiveThemeColors colors) {
-    switch (widget.style) {
-      case NotificationStyle.compact:
-        return Border.all(
-          color: colors.isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
-          width: 0.9,
-        );
-      case NotificationStyle.ios:
-        return Border.all(
-          color: colors.isDark ? Colors.white.withValues(alpha: 0.12) : Colors.black.withValues(alpha: 0.08),
-          width: 0.9,
-        );
-      case NotificationStyle.oneui:
-        return Border.all(
-          color: colors.isDark ? Colors.white.withValues(alpha: 0.07) : Colors.black.withValues(alpha: 0.05),
-          width: 0.8,
-        );
-      case NotificationStyle.hyperOS:
-        return Border.all(
-          color: colors.isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.06),
-          width: 0.8,
-        );
-      case NotificationStyle.android17:
-        return Border.all(
-          color: colors.isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
-          width: 0.8,
-        );
-    }
+  Border? _computeBorder(ExpressiveThemeColors colors) {
+    return null;
   }
 
-  List<BoxShadow> _computeBoxShadow(ExpressiveThemeColors colors) {
+  List<BoxShadow>? _computeBoxShadow(ExpressiveThemeColors colors) {
+    if (widget.style == NotificationStyle.android17) {
+      return null;
+    }
     switch (widget.style) {
       case NotificationStyle.compact:
         return [
@@ -953,26 +930,32 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
               children: [
                 Row(
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: colors.activePill.withValues(alpha: 0.16),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(notification.appIcon, size: 12, color: colors.activePill),
-                          const SizedBox(width: 4),
-                          Text(
-                            notification.appName,
-                            style: font.textStyleBuilder(
-                              fontSize: 11.0,
-                              fontWeight: FontWeight.w700,
-                              color: colors.activePill,
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: colors.activePill.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(notification.appIcon, size: 12, color: colors.activePill),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                notification.appName,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: font.textStyleBuilder(
+                                  fontSize: 11.0,
+                                  fontWeight: FontWeight.w700,
+                                  color: colors.activePill,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1206,19 +1189,51 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
   }
 
   Widget _buildChevron(ExpressiveThemeColors colors) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () {
-        HapticFeedback.selectionClick();
-        setState(() => _isExpanded = !_isExpanded);
-      },
-      child: Padding(
-        padding: const EdgeInsets.all(2),
-        child: Icon(
-          _isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-          size: 19,
-          color: colors.textSecondary.withValues(alpha: 0.7),
-        ),
+    final isAndroid17 = widget.style == NotificationStyle.android17;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () {
+          HapticFeedback.selectionClick();
+          setState(() => _isExpanded = !_isExpanded);
+        },
+        child: isAndroid17
+            ? AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                width: 28,
+                height: 19,
+                decoration: BoxDecoration(
+                  color: _isExpanded
+                      ? (colors.isDark
+                          ? Colors.white.withValues(alpha: 0.13)
+                          : Colors.black.withValues(alpha: 0.08))
+                      : (colors.isDark
+                          ? Colors.white.withValues(alpha: 0.08)
+                          : Colors.black.withValues(alpha: 0.05)),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Center(
+                  child: Icon(
+                    _isExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 15,
+                    color: colors.textPrimary.withValues(alpha: 0.85),
+                  ),
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.all(2),
+                child: Icon(
+                  _isExpanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 19,
+                  color: colors.textSecondary.withValues(alpha: 0.7),
+                ),
+              ),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'shade_mode.dart';
 
 enum NetworkTileStyle {
   unified,
@@ -48,12 +49,51 @@ enum TileCategory {
   }
 }
 
+enum TileSize {
+  size1x1,
+  size1x2,
+  size2x2;
+
+  String get label {
+    switch (this) {
+      case TileSize.size1x1:
+        return '1×1';
+      case TileSize.size1x2:
+        return '1×2';
+      case TileSize.size2x2:
+        return '2×2';
+    }
+  }
+
+  int get colSpan => this == TileSize.size1x1 ? 1 : 2;
+  int get rowSpan => this == TileSize.size2x2 ? 2 : 1;
+
+  TileSize get next {
+    switch (this) {
+      case TileSize.size1x1:
+        return TileSize.size1x2;
+      case TileSize.size1x2:
+        return TileSize.size2x2;
+      case TileSize.size2x2:
+        return TileSize.size1x1;
+    }
+  }
+
+  static TileSize fromString(String? raw, {required bool fallbackWide}) {
+    if (raw == TileSize.size2x2.name || raw == '2x2') return TileSize.size2x2;
+    if (raw == TileSize.size1x2.name || raw == '1x2') return TileSize.size1x2;
+    if (raw == TileSize.size1x1.name || raw == '1x1') return TileSize.size1x1;
+    return fallbackWide ? TileSize.size1x2 : TileSize.size1x1;
+  }
+}
+
 class QsTileModel {
   final String id;
   final String title;
   final String? subtitle;
   final IconData icon;
   final bool isWide;
+  final TileSize? customSize;
   final bool isActive;
   final bool hasDetails;
   final TileCategory category;
@@ -64,10 +104,35 @@ class QsTileModel {
     this.subtitle,
     required this.icon,
     this.isWide = false,
+    this.customSize,
     this.isActive = false,
     this.hasDetails = false,
     this.category = TileCategory.utilities,
   });
+
+  TileSize get tileSize =>
+      customSize ?? (isWide ? TileSize.size1x2 : TileSize.size1x1);
+
+  bool get is2x2 => tileSize == TileSize.size2x2;
+  bool get is1x2 => tileSize == TileSize.size1x2;
+  bool get is1x1 => tileSize == TileSize.size1x1;
+
+  bool get isNothingOsSystemControl =>
+      id == 'nothing_volume' ||
+      id == 'nothing_brightness' ||
+      id == 'nothing_ringer';
+
+  int get bentoRowSpan {
+    if (id == 'nothing_volume' || id == 'nothing_brightness') return 2;
+    if (id == 'nothing_ringer') return 1;
+    return tileSize.rowSpan;
+  }
+
+  int get bentoColSpan {
+    if (id == 'nothing_volume' || id == 'nothing_brightness') return 1;
+    if (id == 'nothing_ringer') return 2;
+    return tileSize.colSpan;
+  }
 
   QsTileModel copyWith({
     String? id,
@@ -75,16 +140,24 @@ class QsTileModel {
     String? subtitle,
     IconData? icon,
     bool? isWide,
+    TileSize? tileSize,
     bool? isActive,
     bool? hasDetails,
     TileCategory? category,
   }) {
+    final resolvedSize = tileSize ??
+        (isWide != null
+            ? (isWide ? TileSize.size1x2 : TileSize.size1x1)
+            : this.tileSize);
+    final resolvedWide = resolvedSize != TileSize.size1x1;
+
     return QsTileModel(
       id: id ?? this.id,
       title: title ?? this.title,
       subtitle: subtitle ?? this.subtitle,
       icon: icon ?? this.icon,
-      isWide: isWide ?? this.isWide,
+      isWide: resolvedWide,
+      customSize: resolvedSize,
       isActive: isActive ?? this.isActive,
       hasDetails: hasDetails ?? this.hasDetails,
       category: category ?? this.category,
@@ -96,6 +169,7 @@ class QsTileModel {
     'title': title,
     'subtitle': subtitle,
     'isWide': isWide,
+    'tileSize': tileSize.name,
     'isActive': isActive,
     'hasDetails': hasDetails,
     'category': category.name,
@@ -107,17 +181,85 @@ class QsTileModel {
       (t) => t.id == id,
       orElse: () => defaultTiles.first,
     );
+    final fallbackWide = json['isWide'] as bool? ?? catalogTile.isWide;
+    final parsedSize = TileSize.fromString(
+      json['tileSize'] as String?,
+      fallbackWide: fallbackWide,
+    );
     return catalogTile.copyWith(
       title: json['title'] as String?,
       subtitle: json['subtitle'] as String?,
-      isWide: json['isWide'] as bool? ?? catalogTile.isWide,
+      tileSize: parsedSize,
       isActive: json['isActive'] as bool? ?? catalogTile.isActive,
       hasDetails: json['hasDetails'] as bool? ?? catalogTile.hasDetails,
     );
   }
 
-  static List<QsTileModel> get defaultTiles => [
-    const QsTileModel(
+  static const QsTileModel nothingVolumeControl = QsTileModel(
+    id: 'nothing_volume',
+    title: 'Volume Slider',
+    subtitle: '2×1 Vertical',
+    icon: Icons.music_note_rounded,
+    isWide: false,
+    category: TileCategory.sound,
+  );
+
+  static const QsTileModel nothingBrightnessControl = QsTileModel(
+    id: 'nothing_brightness',
+    title: 'Brightness Slider',
+    subtitle: '2×1 Vertical',
+    icon: Icons.wb_sunny_outlined,
+    isWide: false,
+    category: TileCategory.display,
+  );
+
+  static const QsTileModel nothingRingerControl = QsTileModel(
+    id: 'nothing_ringer',
+    title: 'Audio Modes',
+    subtitle: 'Loud • Vibrate • Silent',
+    icon: Icons.volume_up_outlined,
+    isWide: true,
+    category: TileCategory.sound,
+  );
+
+  static List<QsTileModel> ensureNothingOsControls(List<QsTileModel> input) {
+    final result = List<QsTileModel>.from(input);
+    if (!result.any((t) => t.id == 'nothing_volume')) {
+      final insertIdx = result.length >= 3 ? 3 : result.length;
+      result.insert(insertIdx, nothingVolumeControl);
+    }
+    if (!result.any((t) => t.id == 'nothing_brightness')) {
+      final volIdx = result.indexWhere((t) => t.id == 'nothing_volume');
+      final insertIdx = (volIdx != -1) ? volIdx + 1 : result.length;
+      result.insert(insertIdx.clamp(0, result.length), nothingBrightnessControl);
+    }
+    if (!result.any((t) => t.id == 'nothing_ringer')) {
+      final insertIdx = result.length >= 9 ? 9 : result.length;
+      result.insert(insertIdx, nothingRingerControl);
+    }
+    return result;
+  }
+
+  static List<QsTileModel> sanitizeForStandardMode(List<QsTileModel> input) {
+    return input
+        .where((t) => !t.isNothingOsSystemControl)
+        .map((t) =>
+            t.tileSize == TileSize.size2x2 ? t.copyWith(tileSize: TileSize.size1x2) : t)
+        .toList();
+  }
+
+  static List<QsTileModel> defaultTilesForMode(ShadeMode mode) {
+    if (mode == ShadeMode.nothingOs5) {
+      return ensureNothingOsControls(defaultStandardTiles);
+    }
+    return List<QsTileModel>.from(defaultStandardTiles);
+  }
+
+  static List<QsTileModel> get defaultTiles =>
+      List<QsTileModel>.from(defaultStandardTiles);
+
+  static const List<QsTileModel> defaultStandardTiles = [
+    QsTileModel(
       id: 'wifi',
       title: 'Internet',
       subtitle: 'Wi-Fi',
@@ -127,7 +269,7 @@ class QsTileModel {
       hasDetails: true,
       category: TileCategory.connectivity,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'bluetooth',
       title: 'Bluetooth',
       subtitle: 'Off',
@@ -137,7 +279,7 @@ class QsTileModel {
       hasDetails: true,
       category: TileCategory.connectivity,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'dnd',
       title: 'Do Not Disturb',
       subtitle: 'Off',
@@ -147,7 +289,7 @@ class QsTileModel {
       hasDetails: false,
       category: TileCategory.sound,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'flashlight',
       title: 'Flashlight',
       subtitle: 'Off',
@@ -157,7 +299,7 @@ class QsTileModel {
       hasDetails: false,
       category: TileCategory.utilities,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'autorotate',
       title: 'Auto-rotate',
       subtitle: 'On',
@@ -166,7 +308,7 @@ class QsTileModel {
       isActive: true,
       category: TileCategory.display,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'airplane',
       title: 'Airplane mode',
       subtitle: 'Off',
@@ -175,7 +317,7 @@ class QsTileModel {
       isActive: false,
       category: TileCategory.connectivity,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'location',
       title: 'Location',
       subtitle: 'Off',
@@ -184,7 +326,7 @@ class QsTileModel {
       isActive: false,
       category: TileCategory.privacy,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'battery_saver',
       title: 'Battery Saver',
       subtitle: 'Off',
@@ -193,7 +335,7 @@ class QsTileModel {
       isActive: false,
       category: TileCategory.utilities,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'hotspot',
       title: 'Hotspot',
       subtitle: 'Off',
@@ -202,7 +344,7 @@ class QsTileModel {
       isActive: false,
       category: TileCategory.connectivity,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'night_light',
       title: 'Night Light',
       subtitle: 'Off',
@@ -211,7 +353,7 @@ class QsTileModel {
       isActive: false,
       category: TileCategory.display,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'cast',
       title: 'Cast',
       subtitle: 'Off',
@@ -220,7 +362,7 @@ class QsTileModel {
       isActive: false,
       category: TileCategory.connectivity,
     ),
-    const QsTileModel(
+    QsTileModel(
       id: 'modes',
       title: 'Modes',
       subtitle: 'Normal',
@@ -232,6 +374,9 @@ class QsTileModel {
   ];
 
   static List<QsTileModel> get allAvailableTiles => [
+    nothingVolumeControl,
+    nothingBrightnessControl,
+    nothingRingerControl,
     // 1. Connectivity
     const QsTileModel(
       id: 'wifi',

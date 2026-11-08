@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.database.ContentObserver
 import android.hardware.camera2.CameraManager
 import android.location.LocationManager
+import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Handler
@@ -31,7 +32,6 @@ object ExpressiveNativeBridge {
     private const val NOTIFICATIONS_CHANNEL = "com.expressive_shade/notifications"
     private const val MEDIA_CHANNEL = "com.expressive_shade/media"
     private const val SETTINGS_CHANNEL = "com.expressive_shade/settings"
-    private const val APPS_CHANNEL = "com.expressive_shade/apps"
 
     // Coalesce bursts of notification events into a single refresh.
     private const val NOTIFICATION_REFRESH_DEBOUNCE_MS = 150L
@@ -77,6 +77,7 @@ object ExpressiveNativeBridge {
             addAction(Intent.ACTION_BATTERY_CHANGED)
             addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
             addAction(NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED)
+            addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
             addAction(LocationManager.PROVIDERS_CHANGED_ACTION)
             addAction(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
         }
@@ -141,9 +142,6 @@ object ExpressiveNativeBridge {
                 setMethodCallHandler(SettingsChannelHandler(context) { changed -> broadcastSettings(changed) })
             }
         )
-        MethodChannel(messenger, APPS_CHANNEL).apply {
-            setMethodCallHandler(AppsChannelHandler(context))
-        }
 
         // Connect listener callbacks
         ExpressiveNotificationListenerService.onNotificationsChangedListener = {

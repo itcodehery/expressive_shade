@@ -60,10 +60,7 @@ class ShadeOverlayActivity : FlutterActivity() {
                         }
                     }
                     val lp = window.attributes
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        lp.preferredMaxDisplayRefreshRate = maxRate
-                        lp.preferredMinDisplayRefreshRate = maxRate
-                    }
+                    lp.preferredRefreshRate = maxRate
                     if (maxRate > 60f) {
                         lp.preferredDisplayModeId = maxMode.modeId
                     }
@@ -135,6 +132,7 @@ class ShadeOverlayActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        SettingsLauncher.setCurrentActivity(this)
         ExpressiveAccessibilityService.isOverlayShowing = true
         hideSystemStatusBar()
         flutterEngine?.let { engine ->

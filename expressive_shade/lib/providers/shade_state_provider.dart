@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/font_config.dart';
-import '../models/app_dock_item.dart';
 import '../models/media_player_style.dart';
 import '../models/notification_model.dart';
 import '../models/notification_style.dart';
@@ -11,7 +10,6 @@ import '../models/qs_tile_model.dart';
 import '../models/shade_mode.dart';
 import '../models/shade_theme.dart';
 import '../models/slider_style.dart';
-import '../services/system_apps_service.dart';
 import '../services/system_hardware_service.dart';
 import '../services/system_media_service.dart';
 import '../services/system_monet_service.dart';
@@ -78,6 +76,8 @@ class ShadeStateProvider extends ChangeNotifier {
       final modeStr = s['shadeMode'].toString();
       if (modeStr == 'unified') {
         _shadeMode = ShadeMode.unified;
+      } else if (modeStr == 'nothingOs5' || modeStr == 'nothing_os_5') {
+        _shadeMode = ShadeMode.nothingOs5;
       } else if (modeStr == 'smart' || modeStr == 'brutalist' || modeStr == 'nothing') {
         _shadeMode = ShadeMode.smart;
       } else {
@@ -175,40 +175,35 @@ class ShadeStateProvider extends ChangeNotifier {
         _configureNetworkTiles(nStyle);
       }
     }
-    if (s['tiles'] != null) {
-      try {
-        final dynamic raw = s['tiles'];
-        final List<dynamic> list = (raw is String)
-            ? jsonDecode(raw)
-            : (raw as List);
-        final loadedTiles = list
-            .map(
-              (item) =>
-                  QsTileModel.fromJson(Map<String, dynamic>.from(item as Map)),
-            )
-            .toList();
-        if (loadedTiles.isNotEmpty) {
-          _tiles.clear();
-          _tiles.addAll(loadedTiles);
-        }
-      } catch (_) {}
-    }
-    if (s['appDockEnabled'] != null) {
-      final val = s['appDockEnabled'];
-      _appDockEnabled = val == true || val.toString() == 'true';
-    }
-    if (s['appDockApps'] != null) {
-      try {
-        final dynamic raw = s['appDockApps'];
-        final List<dynamic> list =
-            (raw is String) ? jsonDecode(raw) : (raw as List);
-        _appDockApps.clear();
-        for (final item in list.take(8)) {
-          _appDockApps.add(
-            AppDockItem.fromJson(Map<String, dynamic>.from(item as Map)),
-          );
-        }
-      } catch (_) {}
+    for (final mode in ShadeMode.values) {
+      final modeKey = 'tiles_${mode.name}';
+      if (s[modeKey] != null) {
+        try {
+          final dynamic raw = s[modeKey];
+          final List<dynamic> list =
+              (raw is String) ? jsonDecode(raw) : (raw as List);
+          final loadedTiles = list
+              .map(
+                (item) => QsTileModel.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ),
+              )
+              .toList();
+          if (loadedTiles.isNotEmpty) {
+            final targetList = _tilesByMode[mode]!;
+            targetList.clear();
+            if (mode == ShadeMode.nothingOs5) {
+              targetList.addAll(
+                QsTileModel.ensureNothingOsControls(loadedTiles),
+              );
+            } else {
+              targetList.addAll(
+                QsTileModel.sanitizeForStandardMode(loadedTiles),
+              );
+            }
+          }
+        } catch (_) {}
+      }
     }
     notifyListeners();
   }
@@ -234,7 +229,7 @@ class ShadeStateProvider extends ChangeNotifier {
     _saveTimer?.cancel();
     _saveTimer = null;
     if (all) {
-      _dirtySettings.addAll(const {
+      _dirtySettings.addAll({
         'shadeMode',
         'sliderStyle',
         'mediaPlayerStyle',
@@ -244,8 +239,7 @@ class ShadeStateProvider extends ChangeNotifier {
         'customTheme',
         'selectedFont',
         'networkTileStyle',
-        'tiles',
-        'appDock',
+        for (final mode in ShadeMode.values) 'tiles_${mode.name}',
       });
     }
     if (_dirtySettings.isEmpty) return;
@@ -254,9 +248,7 @@ class ShadeStateProvider extends ChangeNotifier {
 
     final map = <String, dynamic>{};
     if (dirty.contains('shadeMode')) {
-      map['shadeMode'] = _shadeMode == ShadeMode.unified
-          ? 'unified'
-          : (_shadeMode == ShadeMode.smart ? 'smart' : 'split');
+      map['shadeMode'] = _shadeMode.name;
     }
     if (dirty.contains('sliderStyle')) {
       map['sliderStyle'] = _sliderStyle.name;
@@ -310,14 +302,13 @@ class ShadeStateProvider extends ChangeNotifier {
           ? 'unified'
           : 'separate';
     }
-    if (dirty.contains('tiles')) {
-      // Only the tiles are re-serialized, and only when they changed.
-      map['tiles'] = jsonEncode(_tiles.map((t) => t.toJson()).toList());
-    }
-    if (dirty.contains('appDock')) {
-      map['appDockEnabled'] = _appDockEnabled;
-      map['appDockApps'] =
-          jsonEncode(_appDockApps.map((a) => a.toJson()).toList());
+    for (final mode in ShadeMode.values) {
+      final modeKey = 'tiles_${mode.name}';
+      if (dirty.contains(modeKey) || dirty.contains('tiles')) {
+        map[modeKey] = jsonEncode(
+          _tilesByMode[mode]!.map((t) => t.toJson()).toList(),
+        );
+      }
     }
     SystemSettingsService.saveSettings(map);
   }
@@ -617,12 +608,15 @@ class ShadeStateProvider extends ChangeNotifier {
       );
     }
 
-    // 9. Brightness & Volume
+    // 9. Brightness, Volume & Ringer Mode
     if (hw['brightness'] is num) {
       _brightness = (hw['brightness'] as num).toDouble().clamp(0.0, 1.0);
     }
     if (hw['volume'] is num) {
       _volume = (hw['volume'] as num).toDouble().clamp(0.0, 1.0);
+    }
+    if (hw['ringerMode'] is num) {
+      _ringerMode = (hw['ringerMode'] as num).toInt().clamp(0, 2);
     }
 
     // 10. Carrier & Battery
@@ -639,9 +633,11 @@ class ShadeStateProvider extends ChangeNotifier {
   }
 
   void _updateTile(String id, QsTileModel Function(QsTileModel) updater) {
-    final idx = _tiles.indexWhere((t) => t.id == id);
-    if (idx != -1) {
-      _tiles[idx] = updater(_tiles[idx]);
+    for (final modeTiles in _tilesByMode.values) {
+      final idx = modeTiles.indexWhere((t) => t.id == id);
+      if (idx != -1) {
+        modeTiles[idx] = updater(modeTiles[idx]);
+      }
     }
   }
 
@@ -649,66 +645,6 @@ class ShadeStateProvider extends ChangeNotifier {
   ShadeMode _shadeMode =
       ShadeMode.unified; // Default to Android 17 Unified Shade
   ShadeMode get shadeMode => _shadeMode;
-
-  // App Dock Configuration (Split Shade Mode only, up to 8 apps)
-  bool _appDockEnabled = false;
-  bool get appDockEnabled => _appDockEnabled;
-
-  final List<AppDockItem> _appDockApps = [];
-  List<AppDockItem> get appDockApps => List.unmodifiable(_appDockApps);
-
-  void setAppDockEnabled(bool enabled) {
-    if (_appDockEnabled != enabled) {
-      _appDockEnabled = enabled;
-      _scheduleSave({'appDock'});
-      notifyListeners();
-    }
-  }
-
-  void setAppDockApps(List<AppDockItem> apps) {
-    _appDockApps.clear();
-    _appDockApps.addAll(apps.take(8));
-    _scheduleSave({'appDock'});
-    notifyListeners();
-  }
-
-  void addAppDockItem(AppDockItem item) {
-    if (_appDockApps.length >= 8) return;
-    if (_appDockApps.any((a) => a.packageName == item.packageName)) return;
-    _appDockApps.add(item);
-    _scheduleSave({'appDock'});
-    notifyListeners();
-  }
-
-  void removeAppDockItem(String packageName) {
-    _appDockApps.removeWhere((a) => a.packageName == packageName);
-    _scheduleSave({'appDock'});
-    notifyListeners();
-  }
-
-  void updateAppDockItemColor(String packageName, int newColorValue) {
-    final idx = _appDockApps.indexWhere((a) => a.packageName == packageName);
-    if (idx != -1) {
-      _appDockApps[idx] = _appDockApps[idx].copyWith(colorValue: newColorValue);
-      _scheduleSave({'appDock'});
-      notifyListeners();
-    }
-  }
-
-  void reorderAppDockItems(int oldIndex, int newIndex) {
-    if (oldIndex < 0 || oldIndex >= _appDockApps.length) return;
-    if (newIndex < 0 || newIndex > _appDockApps.length) return;
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
-    final item = _appDockApps.removeAt(oldIndex);
-    _appDockApps.insert(newIndex, item);
-    _scheduleSave({'appDock'});
-    notifyListeners();
-  }
-
-  Future<bool> launchApp(String packageName) =>
-      SystemAppsService.launchApp(packageName);
 
   // Split Panel Tab (0: Notifications, 1: Quick Settings)
   int _splitTabIndex = 1;
@@ -758,9 +694,17 @@ class ShadeStateProvider extends ChangeNotifier {
   double _volume = 0.40;
   double get volume => _volume;
 
-  // Tiles
-  final List<QsTileModel> _tiles = List.from(QsTileModel.defaultTiles);
-  List<QsTileModel> get tiles => _tiles;
+  // Per-ShadeMode Independent Tile Layouts
+  final Map<ShadeMode, List<QsTileModel>> _tilesByMode = {
+    for (final mode in ShadeMode.values)
+      mode: QsTileModel.defaultTilesForMode(mode),
+  };
+
+  List<QsTileModel> get _tiles => _tilesByMode[_shadeMode]!;
+  List<QsTileModel> get tiles => _tilesByMode[_shadeMode]!;
+  List<QsTileModel> tilesForMode(ShadeMode mode) => _tilesByMode[mode]!;
+
+  String get _currentModeTilesKey => 'tiles_${_shadeMode.name}';
 
   // Network Tile Style: Unified Internet vs Separate Wi-Fi & Mobile Data
   NetworkTileStyle _networkTileStyle = NetworkTileStyle.unified;
@@ -770,52 +714,57 @@ class ShadeStateProvider extends ChangeNotifier {
     if (_networkTileStyle != style) {
       _networkTileStyle = style;
       _configureNetworkTiles(style);
-      _scheduleSave({'networkTileStyle', 'tiles'});
+      _scheduleSave({
+        'networkTileStyle',
+        for (final mode in ShadeMode.values) 'tiles_${mode.name}',
+      });
       notifyListeners();
     }
   }
 
   void _configureNetworkTiles(NetworkTileStyle style) {
-    final wifiIdx = _tiles.indexWhere((t) => t.id == 'wifi');
-    final mobileIdx = _tiles.indexWhere((t) => t.id == 'mobile_data');
+    for (final modeTiles in _tilesByMode.values) {
+      final wifiIdx = modeTiles.indexWhere((t) => t.id == 'wifi');
+      final mobileIdx = modeTiles.indexWhere((t) => t.id == 'mobile_data');
 
-    if (style == NetworkTileStyle.separate) {
-      // 1. Wi-Fi becomes dedicated Wi-Fi tile
-      if (wifiIdx != -1) {
-        _tiles[wifiIdx] = _tiles[wifiIdx].copyWith(
-          title: 'Wi-Fi',
-          subtitle: _tiles[wifiIdx].isActive ? 'Connected' : 'Off',
-          hasDetails: false,
-        );
-      }
-      // 2. Add Mobile Data tile if not present
-      if (mobileIdx == -1) {
-        final insertPos = (wifiIdx != -1) ? wifiIdx + 1 : 0;
-        _tiles.insert(
-          insertPos,
-          QsTileModel(
-            id: 'mobile_data',
-            title: 'Mobile Data',
-            subtitle: _carrierName.isNotEmpty ? _carrierName : 'Mobile',
-            icon: Icons.signal_cellular_alt_rounded,
-            isWide: true,
-            isActive: true,
+      if (style == NetworkTileStyle.separate) {
+        // 1. Wi-Fi becomes dedicated Wi-Fi tile
+        if (wifiIdx != -1) {
+          modeTiles[wifiIdx] = modeTiles[wifiIdx].copyWith(
+            title: 'Wi-Fi',
+            subtitle: modeTiles[wifiIdx].isActive ? 'Connected' : 'Off',
             hasDetails: false,
-          ),
-        );
-      }
-    } else {
-      // 1. Revert to Unified "Internet" tile
-      if (wifiIdx != -1) {
-        _tiles[wifiIdx] = _tiles[wifiIdx].copyWith(
-          title: 'Internet',
-          subtitle: _tiles[wifiIdx].isActive ? 'Wi-Fi' : 'Off',
-          hasDetails: true,
-        );
-      }
-      // 2. Remove separate Mobile Data tile
-      if (mobileIdx != -1) {
-        _tiles.removeAt(mobileIdx);
+          );
+        }
+        // 2. Add Mobile Data tile if not present
+        if (mobileIdx == -1) {
+          final insertPos = (wifiIdx != -1) ? wifiIdx + 1 : 0;
+          modeTiles.insert(
+            insertPos,
+            QsTileModel(
+              id: 'mobile_data',
+              title: 'Mobile Data',
+              subtitle: _carrierName.isNotEmpty ? _carrierName : 'Mobile',
+              icon: Icons.signal_cellular_alt_rounded,
+              isWide: true,
+              isActive: true,
+              hasDetails: false,
+            ),
+          );
+        }
+      } else {
+        // 1. Revert to Unified "Internet" tile
+        if (wifiIdx != -1) {
+          modeTiles[wifiIdx] = modeTiles[wifiIdx].copyWith(
+            title: 'Internet',
+            subtitle: modeTiles[wifiIdx].isActive ? 'Wi-Fi' : 'Off',
+            hasDetails: true,
+          );
+        }
+        // 2. Remove separate Mobile Data tile
+        if (mobileIdx != -1) {
+          modeTiles.removeAt(mobileIdx);
+        }
       }
     }
   }
@@ -1132,15 +1081,28 @@ class ShadeStateProvider extends ChangeNotifier {
         );
       }
 
-      _scheduleSave({'tiles'});
+      final updatedTile = _tiles[index];
+      _updateTile(
+        id,
+        (t) => t.copyWith(
+          isActive: updatedTile.isActive,
+          subtitle: updatedTile.subtitle,
+        ),
+      );
+
+      _scheduleSave({_currentModeTilesKey});
       notifyListeners();
     }
   }
 
   void addTile(QsTileModel tile) {
     if (!_tiles.any((t) => t.id == tile.id)) {
-      _tiles.add(tile);
-      _scheduleSave({'tiles'});
+      final sanitized = (_shadeMode != ShadeMode.nothingOs5 &&
+              tile.tileSize == TileSize.size2x2)
+          ? tile.copyWith(tileSize: TileSize.size1x2)
+          : tile;
+      _tiles.add(sanitized);
+      _scheduleSave({_currentModeTilesKey});
       notifyListeners();
     }
   }
@@ -1148,16 +1110,16 @@ class ShadeStateProvider extends ChangeNotifier {
   void removeTile(String id) {
     if (_tiles.length > 1) {
       _tiles.removeWhere((t) => t.id == id);
-      _scheduleSave({'tiles'});
+      _scheduleSave({_currentModeTilesKey});
       notifyListeners();
     }
   }
 
   void resetTiles() {
     _tiles.clear();
-    _tiles.addAll(QsTileModel.defaultTiles);
+    _tiles.addAll(QsTileModel.defaultTilesForMode(_shadeMode));
     _configureNetworkTiles(_networkTileStyle);
-    _scheduleSave({'tiles'});
+    _scheduleSave({_currentModeTilesKey});
     notifyListeners();
   }
 
@@ -1166,7 +1128,7 @@ class ShadeStateProvider extends ChangeNotifier {
     if (newIndex < 0 || newIndex >= _tiles.length) return;
     final tile = _tiles.removeAt(oldIndex);
     _tiles.insert(newIndex, tile);
-    _scheduleSave({'tiles'});
+    _scheduleSave({_currentModeTilesKey});
     notifyListeners();
   }
 
@@ -1176,7 +1138,7 @@ class ShadeStateProvider extends ChangeNotifier {
     if (oldIndex != -1 && newIndex != -1 && oldIndex != newIndex) {
       final tile = _tiles.removeAt(oldIndex);
       _tiles.insert(newIndex, tile);
-      _scheduleSave({'tiles'});
+      _scheduleSave({_currentModeTilesKey});
       notifyListeners();
     }
   }
@@ -1246,37 +1208,77 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Ringer Mode for NothingOS 5 3-dot pill (0: Silent, 1: Vibrate, 2: Ring)
+  int _ringerMode = 2;
+  int get ringerMode => _ringerMode;
+
+  void setRingerMode(int mode) {
+    final clamped = mode.clamp(0, 2);
+    _ringerMode = clamped;
+    SystemHardwareService.setRingerMode(clamped);
+    notifyListeners();
+  }
+
+  void cycleRingerMode() {
+    setRingerMode((_ringerMode + 1) % 3);
+  }
+
   void toggleTileSize(String id) {
     final index = _tiles.indexWhere((t) => t.id == id);
     if (index != -1) {
       final tile = _tiles[index];
-      _tiles[index] = tile.copyWith(isWide: !tile.isWide);
-      _scheduleSave({'tiles'});
+      final nextSize = _shadeMode == ShadeMode.nothingOs5
+          ? tile.tileSize.next
+          : (tile.isWide ? TileSize.size1x1 : TileSize.size1x2);
+      _tiles[index] = tile.copyWith(tileSize: nextSize);
+      _scheduleSave({_currentModeTilesKey});
       notifyListeners();
     }
   }
 
-  void setTileSize(String id, bool isWide) {
+  void cycleTileSize(String id) {
     final index = _tiles.indexWhere((t) => t.id == id);
     if (index != -1) {
       final tile = _tiles[index];
-      if (tile.isWide != isWide) {
-        _tiles[index] = tile.copyWith(isWide: isWide);
-        _scheduleSave({'tiles'});
+      final nextSize = _shadeMode == ShadeMode.nothingOs5
+          ? tile.tileSize.next
+          : (tile.isWide ? TileSize.size1x1 : TileSize.size1x2);
+      _tiles[index] = tile.copyWith(tileSize: nextSize);
+      _scheduleSave({_currentModeTilesKey});
+      notifyListeners();
+    }
+  }
+
+  void setTileExactSize(String id, TileSize size) {
+    final index = _tiles.indexWhere((t) => t.id == id);
+    if (index != -1) {
+      final tile = _tiles[index];
+      final resolvedSize = (_shadeMode != ShadeMode.nothingOs5 &&
+              size == TileSize.size2x2)
+          ? TileSize.size1x2
+          : size;
+      if (tile.tileSize != resolvedSize) {
+        _tiles[index] = tile.copyWith(tileSize: resolvedSize);
+        _scheduleSave({_currentModeTilesKey});
         notifyListeners();
       }
     }
   }
 
+  void setTileSize(String id, bool isWide) {
+    setTileExactSize(id, isWide ? TileSize.size1x2 : TileSize.size1x1);
+  }
+
   void resetTileSizes() {
+    final defaults = QsTileModel.defaultTilesForMode(_shadeMode);
     for (int i = 0; i < _tiles.length; i++) {
-      final defaultTile = QsTileModel.defaultTiles.firstWhere(
+      final defaultTile = defaults.firstWhere(
         (dt) => dt.id == _tiles[i].id,
         orElse: () => _tiles[i],
       );
-      _tiles[i] = _tiles[i].copyWith(isWide: defaultTile.isWide);
+      _tiles[i] = _tiles[i].copyWith(tileSize: defaultTile.tileSize);
     }
-    _scheduleSave({'tiles'});
+    _scheduleSave({_currentModeTilesKey});
     notifyListeners();
   }
 
@@ -1312,8 +1314,13 @@ class ShadeStateProvider extends ChangeNotifier {
 
   Future<void> openSettings() => SystemHardwareService.openSettings();
 
+  Future<void> openShadeApp() => SystemHardwareService.openShadeApp();
+
   Future<void> openNotificationHistory() =>
       SystemHardwareService.openNotificationHistory();
+
+  Future<void> openAppNotificationSettings([String? packageName]) =>
+      SystemHardwareService.openAppNotificationSettings(packageName);
 }
 
 extension on String {

@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../../../models/app_dock_item.dart';
 import '../../../../models/font_config.dart';
 import '../../../../models/media_player_style.dart';
 import '../../../../models/notification_model.dart';
 import '../../../../models/notification_style.dart';
 import '../../../../models/qs_tile_model.dart';
 import '../../../../models/slider_style.dart';
-import '../../../../services/system_apps_service.dart';
 import '../../../../theme/m3_expressive_theme.dart';
 import '../../../../widgets/expressive_media_card.dart';
 import '../../../../widgets/expressive_pill.dart';
@@ -48,15 +46,14 @@ class SplitShadeView extends StatelessWidget {
   final List<NotificationModel> notifications;
   final NotificationStyle notificationStyle;
   final ValueChanged<String> onDismissNotification;
+  final VoidCallback? onClearAllNotifications;
+  final VoidCallback? onOpenHistory;
+  final ValueChanged<NotificationStyle>? onNotificationStyleChanged;
+  final VoidCallback? onOpenNotificationSettings;
   final void Function(NotificationModel, NotificationAction)? onActionTap;
   final void Function(NotificationModel, NotificationAction, String)? onReply;
   final void Function(NotificationModel)? onOpenNotification;
   final void Function(NotificationModel)? onSnoozeNotification;
-
-  // App Dock (Split Shade Mode only)
-  final bool appDockEnabled;
-  final List<AppDockItem> appDockApps;
-  final ValueChanged<String>? onLaunchApp;
 
   const SplitShadeView({
     super.key,
@@ -88,13 +85,14 @@ class SplitShadeView extends StatelessWidget {
     required this.notifications,
     this.notificationStyle = NotificationStyle.android17,
     required this.onDismissNotification,
+    this.onClearAllNotifications,
+    this.onOpenHistory,
+    this.onNotificationStyleChanged,
+    this.onOpenNotificationSettings,
     this.onActionTap,
     this.onReply,
     this.onOpenNotification,
     this.onSnoozeNotification,
-    this.appDockEnabled = false,
-    this.appDockApps = const [],
-    this.onLaunchApp,
   });
 
   @override
@@ -107,46 +105,14 @@ class SplitShadeView extends StatelessWidget {
             controller: pageController,
             onPageChanged: onPageChanged,
             children: [
-              // Page 0: Dedicated Notifications Sheet & Optional App Dock Card
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: colors.notificationContainerBackground,
-                          borderRadius: BorderRadius.circular(32),
-                          border: Border.all(
-                            color: colors.isDark
-                                ? Colors.white.withValues(alpha: 0.08)
-                                : Colors.black.withValues(alpha: 0.06),
-                            width: 1.0,
-                          ),
-                        ),
-                        child: ListView(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
-                          children: [
-                            NotificationList(
-                              notifications: notifications,
-                              colors: colors,
-                              font: font,
-                              style: notificationStyle,
-                              onDismiss: onDismissNotification,
-                              onActionTap: onActionTap,
-                              onReply: onReply,
-                              onTap: onOpenNotification,
-                              onSnooze: onSnoozeNotification,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (appDockEnabled && appDockApps.isNotEmpty) ...[
-                      const SizedBox(height: 12),
-                      _buildAppDockCard(context),
-                    ],
-                  ],
+              // Page 0: Dedicated Notifications Sheet (Follows theme with darker background and curved bottom corners)
+              Align(
+                alignment: Alignment.topCenter,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  child: _buildNotificationsContainer(context),
                 ),
               ),
 
@@ -214,292 +180,384 @@ class SplitShadeView extends StatelessWidget {
   }
 
   Widget _buildDynamicTilesGrid() {
-    final rows = packTilesIntoRows(tiles);
+    final pages = packTilesIntoBentoPages(tiles, maxCols: 4, maxRowsPerPage: 5);
+    if (pages.isEmpty) return const SizedBox.shrink();
 
-    if (rows.length <= 5) {
-      return _buildTilesGridPage(rows, 0);
-    }
-
-    final List<List<List<QsTileModel>>> pages = [];
-    for (int i = 0; i < rows.length; i += 5) {
-      final end = (i + 5 < rows.length) ? i + 5 : rows.length;
-      pages.add(rows.sublist(i, end));
+    if (pages.length == 1) {
+      return _buildBentoTilesPage(pages.first, 0);
     }
 
     const double fixedHeight = (5 * 68.0) + (4 * 12.0) + 2.0;
 
     return PaginatedTilesContainer(
       colors: colors,
-      pages: pages,
+      pageCount: pages.length,
       fixedHeight: fixedHeight,
       builder: (context, pageIndex) {
-        return _buildTilesGridPage(pages[pageIndex], pageIndex * 5);
+        return _buildBentoTilesPage(pages[pageIndex], pageIndex * 5);
       },
     );
   }
 
-  Widget _buildTilesGridPage(List<List<QsTileModel>> rows, int baseRowIndex) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (int r = 0; r < rows.length; r++) ...[
-          if (r > 0) const SizedBox(height: 12),
-          Row(
+  Widget _buildBentoTilesPage(StandardBentoPage page, int baseRowIndex) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const double colSpacing = 10.0;
+        const double rowSpacing = 12.0;
+        const double rowHeight = 68.0;
+        final double maxW = constraints.maxWidth;
+        final double cellWidth = (maxW - (3 * colSpacing)) / 4.0;
+        final int rowsCount = page.totalRows.clamp(1, 5);
+        final double totalH =
+            (rowsCount * rowHeight) + ((rowsCount - 1) * rowSpacing);
+
+        return SizedBox(
+          width: maxW,
+          height: totalH,
+          child: Stack(
+            clipBehavior: Clip.none,
             children: [
-              for (int t = 0; t < rows[r].length; t++) ...[
-                if (t > 0) const SizedBox(width: 10),
-                Expanded(
-                  flex: rows[r][t].isWide ? 2 : 1,
+              for (final p in page.placements)
+                Positioned(
+                  key: ValueKey('split_tile_${p.tile.id}'),
+                  left: p.col * (cellWidth + colSpacing),
+                  top: p.row * (rowHeight + rowSpacing),
+                  width: (p.colSpan * cellWidth) +
+                      ((p.colSpan - 1) * colSpacing),
+                  height: (p.rowSpan * rowHeight) +
+                      ((p.rowSpan - 1) * rowSpacing),
                   child: ExpressivePill(
-                    tile: rows[r][t],
+                    tile: p.tile,
                     colors: colors,
                     font: font,
-                    row: baseRowIndex + r,
-                    col: t,
+                    row: baseRowIndex + p.row,
+                    col: p.col,
                     impulseNotifier: impulseNotifier,
-                    onResizeTap: () => onResizeTile(rows[r][t].id),
-                    onTap: () => onToggleTile(rows[r][t].id),
-                    onLongPress: () => onLongPressTile(rows[r][t].id),
+                    onResizeTap: () => onResizeTile(p.tile.id),
+                    onTap: () => onToggleTile(p.tile.id),
+                    onLongPress: () => onLongPressTile(p.tile.id),
                   ),
                 ),
-              ],
-              if (rowSpan(rows[r]) < 4) Spacer(flex: 4 - rowSpan(rows[r])),
             ],
           ),
-        ],
-      ],
-    );
-  }
-
-  Widget _buildAppDockCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: colors.notificationContainerBackground,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(
-          color: colors.isDark
-              ? Colors.white.withValues(alpha: 0.08)
-              : Colors.black.withValues(alpha: 0.06),
-          width: 1.0,
-        ),
-      ),
-      child: _buildAppDockGrid(),
-    );
-  }
-
-  Widget _buildAppDockGrid() {
-    final rows = <List<AppDockItem>>[];
-    for (int i = 0; i < appDockApps.length; i += 4) {
-      final end = (i + 4 < appDockApps.length) ? i + 4 : appDockApps.length;
-      rows.add(appDockApps.sublist(i, end));
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (int r = 0; r < rows.length; r++) ...[
-          if (r > 0) const SizedBox(height: 10),
-          Row(
-            children: [
-              for (int c = 0; c < rows[r].length; c++) ...[
-                if (c > 0) const SizedBox(width: 8),
-                Expanded(
-                  child: _AppDockTile(
-                    item: rows[r][c],
-                    font: font,
-                    colors: colors,
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      onLaunchApp?.call(rows[r][c].packageName);
-                    },
-                  ),
-                ),
-              ],
-              if (rows[r].length < 4)
-                for (int s = 0; s < 4 - rows[r].length; s++) ...[
-                  const SizedBox(width: 8),
-                  const Spacer(),
-                ],
-            ],
-          ),
-        ],
-      ],
-    );
-  }
-}
-
-class _AppDockTile extends StatefulWidget {
-  final AppDockItem item;
-  final FontConfig font;
-  final ExpressiveThemeColors colors;
-  final VoidCallback onTap;
-
-  const _AppDockTile({
-    required this.item,
-    required this.font,
-    required this.colors,
-    required this.onTap,
-  });
-
-  @override
-  State<_AppDockTile> createState() => _AppDockTileState();
-}
-
-class _AppDockTileState extends State<_AppDockTile>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _animController;
-  late Animation<double> _scaleAnimation;
-  Uint8List? _iconBytes;
-
-  @override
-  void initState() {
-    super.initState();
-    _animController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 90),
-      reverseDuration: const Duration(milliseconds: 240),
-    );
-    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.88).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: Curves.easeOutQuad,
-        reverseCurve: Curves.easeOutBack,
-      ),
-    );
-    _loadIcon();
-  }
-
-  Future<void> _loadIcon() async {
-    final bytes = await SystemAppsService.getAppIcon(widget.item.packageName);
-    if (mounted && bytes != null) {
-      setState(() => _iconBytes = bytes);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _AppDockTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.item.packageName != widget.item.packageName) {
-      _loadIcon();
-    }
-  }
-
-  @override
-  void dispose() {
-    _animController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final tileColor = widget.item.color;
-    final isDarkBg =
-        ThemeData.estimateBrightnessForColor(tileColor) == Brightness.dark;
-    final fgColor = isDarkBg ? Colors.white : Colors.black87;
-
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: (_) => _animController.forward(),
-      onTapUp: (_) {
-        _animController.reverse();
-        widget.onTap();
+        );
       },
-      onTapCancel: () => _animController.reverse(),
+    );
+  }
+
+  Widget _buildNotificationsContainer(BuildContext context) {
+    final containerBg = colors.notificationContainerBackground;
+    final pillBtnBg = colors.notificationCardBackground;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      decoration: BoxDecoration(
+        color: containerBg,
+        borderRadius: BorderRadius.circular(32),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          AnimatedBuilder(
-            animation: _scaleAnimation,
-            builder: (context, child) => Transform.scale(
-              scale: _scaleAnimation.value,
-              child: child,
-            ),
-            child: Container(
-              height: 56,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: tileColor,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: tileColor.withValues(alpha: 0.35),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: _iconBytes != null
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Image.memory(
-                          _iconBytes!,
-                          width: 32,
-                          height: 32,
-                          fit: BoxFit.cover,
-                          filterQuality: FilterQuality.medium,
-                        ),
-                      )
-                    : Icon(
-                        _getFallbackAppIcon(
-                          widget.item.packageName,
-                          widget.item.appName,
-                        ),
-                        size: 26,
-                        color: fgColor,
-                      ),
-              ),
-            ),
+          NotificationList(
+            notifications: notifications,
+            colors: colors,
+            font: font,
+            style: notificationStyle,
+            onDismiss: onDismissNotification,
+            onActionTap: onActionTap,
+            onReply: onReply,
+            onTap: onOpenNotification,
+            onSnooze: onSnoozeNotification,
           ),
-          const SizedBox(height: 5),
-          Text(
-            widget.item.appName,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: widget.font.textStyleBuilder(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: widget.colors.textPrimary,
-            ),
+          const SizedBox(height: 6),
+
+          // Bottom Notification Tray Footer Bar (History | Clear all | Notification Type)
+          Row(
+            children: [
+              // 1. Notification History Pill Button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    onOpenHistory?.call();
+                  },
+                  child: Container(
+                    width: 68,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: pillBtnBg,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.history_rounded,
+                        size: 20,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // 2. Center "Clear all" Stadium Pill Button
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () {
+                      HapticFeedback.mediumImpact();
+                      onClearAllNotifications?.call();
+                    },
+                    child: Container(
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: pillBtnBg,
+                        borderRadius: BorderRadius.circular(22),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'Clear all',
+                          style: font.textStyleBuilder(
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.w600,
+                            color: colors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // 3. Notification Type / Settings Pill Button (Bell + Gear badge)
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(22),
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    _showNotificationTypeSheet(context);
+                  },
+                  child: Container(
+                    width: 68,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: pillBtnBg,
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    child: Center(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        alignment: Alignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_rounded,
+                            size: 19,
+                            color: colors.textPrimary,
+                          ),
+                          Positioned(
+                            right: -4,
+                            top: -2,
+                            child: Container(
+                              padding: const EdgeInsets.all(1),
+                              decoration: BoxDecoration(
+                                color: pillBtnBg,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                Icons.settings_rounded,
+                                size: 10,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  static IconData _getFallbackAppIcon(String packageName, String appName) {
-    final p = packageName.toLowerCase();
-    final n = appName.toLowerCase();
-    if (p.contains('camera') || n.contains('camera')) return Icons.camera_alt_rounded;
-    if (p.contains('dialer') || p.contains('phone') || n.contains('phone') || n.contains('call')) {
-      return Icons.phone_rounded;
-    }
-    if (p.contains('message') || p.contains('sms') || n.contains('message') || n.contains('chat')) {
-      return Icons.chat_bubble_rounded;
-    }
-    if (p.contains('chrome') || p.contains('browser') || n.contains('browser') || n.contains('web')) {
-      return Icons.language_rounded;
-    }
-    if (p.contains('music') || p.contains('spotify') || n.contains('music') || n.contains('audio')) {
-      return Icons.music_note_rounded;
-    }
-    if (p.contains('gallery') || p.contains('photo') || n.contains('photo') || n.contains('image')) {
-      return Icons.photo_library_rounded;
-    }
-    if (p.contains('clock') || p.contains('alarm') || n.contains('clock') || n.contains('alarm')) {
-      return Icons.access_time_rounded;
-    }
-    if (p.contains('settings') || n.contains('settings')) return Icons.settings_rounded;
-    if (p.contains('mail') || p.contains('gmail') || n.contains('mail')) return Icons.mail_rounded;
-    if (p.contains('map') || n.contains('map')) return Icons.map_rounded;
-    if (p.contains('calc') || n.contains('calc')) return Icons.calculate_rounded;
-    if (p.contains('calendar') || n.contains('calendar')) return Icons.calendar_month_rounded;
-    if (p.contains('video') || p.contains('youtube') || n.contains('video') || n.contains('youtube')) {
-      return Icons.play_arrow_rounded;
-    }
-    return Icons.apps_rounded;
+  void _showNotificationTypeSheet(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (ctx) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                decoration: BoxDecoration(
+                  color: colors.background,
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(
+                    color: colors.textPrimary.withValues(alpha: 0.12),
+                    width: 1.2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.notifications_active_rounded,
+                              size: 20,
+                              color: colors.activePill,
+                            ),
+                            const SizedBox(width: 10),
+                            Text(
+                              'Notification Type',
+                              style: font.textStyleBuilder(
+                                fontSize: 17.0,
+                                fontWeight: FontWeight.w700,
+                                color: colors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () => Navigator.of(ctx).pop(),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            size: 20,
+                            color: colors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    for (final styleOption in NotificationStyle.values) ...[
+                      Builder(
+                        builder: (context) {
+                          final isSelected = styleOption == notificationStyle;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(18),
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                onNotificationStyleChanged?.call(styleOption);
+                                Navigator.of(ctx).pop();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 11,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? colors.activePill.withValues(alpha: 0.18)
+                                      : colors.surface,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? colors.activePill
+                                        : Colors.transparent,
+                                    width: 1.4,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            styleOption.displayName,
+                                            style: font.textStyleBuilder(
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: colors.textPrimary,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            styleOption.description,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: font.textStyleBuilder(
+                                              fontSize: 11.5,
+                                              color: colors.textSecondary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (isSelected)
+                                      Icon(
+                                        Icons.check_circle_rounded,
+                                        size: 20,
+                                        color: colors.activePill,
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                    if (onOpenNotificationSettings != null) ...[
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () {
+                            Navigator.of(ctx).pop();
+                            onOpenNotificationSettings!();
+                          },
+                          icon: Icon(
+                            Icons.settings_outlined,
+                            size: 16,
+                            color: colors.textPrimary,
+                          ),
+                          label: Text(
+                            'System Notification Settings',
+                            style: font.textStyleBuilder(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

@@ -113,7 +113,8 @@ class ExpressiveThemeColors {
     }
 
     // Curated Presets: Follow the exact colors of the selected theme
-    final isBgDark = ThemeData.estimateBrightnessForColor(preset.background) == Brightness.dark;
+    final isBgDark = preset.isDark;
+    final isMonochrome = preset.id.startsWith('monochrome_');
     return ExpressiveThemeColors(
       background: preset.background,
       surface: preset.inactivePill,
@@ -123,8 +124,12 @@ class ExpressiveThemeColors {
       onInactivePill: preset.onInactivePill,
       sliderTrack: preset.sliderTrack,
       sliderProgress: preset.sliderThumb,
-      textPrimary: isBgDark ? Colors.white : const Color(0xFF0F172A),
-      textSecondary: isBgDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+      textPrimary: isBgDark
+          ? Colors.white
+          : (isMonochrome ? const Color(0xFF27272A) : const Color(0xFF0F172A)),
+      textSecondary: isBgDark
+          ? (isMonochrome ? const Color(0xFFA3A3A3) : const Color(0xFF94A3B8))
+          : (isMonochrome ? const Color(0xFF71717A) : const Color(0xFF64748B)),
       isDark: isBgDark,
     );
   }

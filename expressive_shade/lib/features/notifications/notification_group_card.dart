@@ -135,19 +135,6 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
           decoration: BoxDecoration(
             color: groupCardBg,
             borderRadius: groupBorderRadius,
-            border: Border.all(
-              color: colors.isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.05),
-              width: 0.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: colors.isDark ? 0.22 : 0.04),
-                blurRadius: 6,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -266,12 +253,17 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
             const SizedBox(width: 8),
 
             // App Name
-            Text(
-              primaryNotif.appName,
-              style: font.textStyleBuilder(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: colors.textPrimary,
+            Flexible(
+              flex: 2,
+              child: Text(
+                primaryNotif.appName,
+                style: font.textStyleBuilder(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             const SizedBox(width: 6),
@@ -288,6 +280,7 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
 
             // Summary Subtitle (e.g. "7 messages from 2 chats")
             Expanded(
+              flex: 2,
               child: Text(
                 summarySubtitle,
                 style: font.textStyleBuilder(
@@ -311,31 +304,44 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
             ),
             const SizedBox(width: 8),
 
-            // Expand / Collapse Pill Badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            // Expand / Collapse Pill Badge (Matches Android 17 Expressive reference tray)
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.symmetric(
+                horizontal: (_isExpanded && widget.style == NotificationStyle.android17) ? 7 : 8,
+                vertical: 2.5,
+              ),
               decoration: BoxDecoration(
-                color: colors.activePill.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
+                color: (_isExpanded && widget.style == NotificationStyle.android17)
+                    ? (colors.isDark
+                        ? Colors.white.withValues(alpha: 0.10)
+                        : Colors.black.withValues(alpha: 0.06))
+                    : colors.activePill.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    '$count',
-                    style: font.textStyleBuilder(
-                      fontSize: 11.0,
-                      fontWeight: FontWeight.w700,
-                      color: colors.activePill,
+                  if (!_isExpanded || widget.style != NotificationStyle.android17) ...[
+                    Text(
+                      '$count',
+                      style: font.textStyleBuilder(
+                        fontSize: 11.0,
+                        fontWeight: FontWeight.w700,
+                        color: colors.isDark ? colors.activePill : colors.textPrimary,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 3),
+                    const SizedBox(width: 2),
+                  ],
                   Icon(
                     _isExpanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.keyboard_arrow_down_rounded,
-                    size: 14,
-                    color: colors.activePill,
+                    size: 15,
+                    color: (_isExpanded && widget.style == NotificationStyle.android17)
+                        ? colors.textPrimary.withValues(alpha: 0.85)
+                        : (colors.isDark ? colors.activePill : colors.textPrimary),
                   ),
                 ],
               ),

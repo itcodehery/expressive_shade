@@ -14,6 +14,7 @@ class MatrixEditGrid extends StatelessWidget {
   final void Function(QsTileModel tile) onAddTile;
   final void Function(String id) onRemoveTile;
   final VoidCallback onDone;
+  final VoidCallback? onOpenApp;
 
   const MatrixEditGrid({
     super.key,
@@ -26,6 +27,7 @@ class MatrixEditGrid extends StatelessWidget {
     required this.onAddTile,
     required this.onRemoveTile,
     required this.onDone,
+    this.onOpenApp,
   });
 
   @override
@@ -41,36 +43,78 @@ class MatrixEditGrid extends StatelessWidget {
         32,
       ),
       children: [
-        // Header Row with Title and Done button
+        // Header Row with Title, Open App button, and Done button
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Rearrange Tiles',
-                  style: font.textStyleBuilder(
-                    fontSize: 24.0,
-                    fontWeight: FontWeight.w700,
-                    color: colors.textPrimary,
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rearrange Tiles',
+                    style: font.textStyleBuilder(
+                      fontSize: 22.0,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Drag to change tile positions',
-                  style: font.textStyleBuilder(
-                    fontSize: 13.0,
-                    fontWeight: FontWeight.w400,
-                    color: colors.textSecondary,
+                  const SizedBox(height: 2),
+                  Text(
+                    'Drag to change tile positions',
+                    style: font.textStyleBuilder(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w400,
+                      color: colors.textSecondary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
+            if (onOpenApp != null) ...[
+              GestureDetector(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  onOpenApp!();
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: colors.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: colors.activePill.withValues(alpha: 0.35),
+                      width: 1.0,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.tune_rounded,
+                        size: 15,
+                        color: colors.activePill,
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Shade App',
+                        style: font.textStyleBuilder(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             GestureDetector(
               onTap: onDone,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(
                   color: colors.activePill,
                   borderRadius: BorderRadius.circular(20),
@@ -141,7 +185,9 @@ class MatrixEditGrid extends StatelessWidget {
   }
 
   Widget _buildMatrixGrid() {
-    if (tiles.isEmpty) {
+    final matrixTiles =
+        tiles.where((t) => !t.isNothingOsSystemControl).toList();
+    if (matrixTiles.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 20),
@@ -157,9 +203,10 @@ class MatrixEditGrid extends StatelessWidget {
     }
 
     final List<List<QsTileModel>> rows = [];
-    for (int i = 0; i < tiles.length; i += 3) {
-      final end = (i + 3 < tiles.length) ? i + 3 : tiles.length;
-      rows.add(tiles.sublist(i, end));
+    for (int i = 0; i < matrixTiles.length; i += 3) {
+      final end =
+          (i + 3 < matrixTiles.length) ? i + 3 : matrixTiles.length;
+      rows.add(matrixTiles.sublist(i, end));
     }
 
     return Column(
@@ -329,7 +376,9 @@ class MatrixEditGrid extends StatelessWidget {
 
   Widget _buildAvailableTiles() {
     final available = QsTileModel.defaultTiles
-        .where((t) => !tiles.any((at) => at.id == t.id))
+        .where((t) =>
+            !t.isNothingOsSystemControl &&
+            !tiles.any((at) => at.id == t.id))
         .toList();
 
     if (available.isEmpty) {
