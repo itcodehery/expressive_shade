@@ -77,7 +77,7 @@ class _ExpressivePillState extends State<ExpressivePill>
     _pressHeightAnim = Tween<double>(begin: 0.0, end: 7.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: Curves.easeInQuad,
+        curve: Curves.easeOutQuad,
         reverseCurve: Curves.easeOutBack, // M3 Expressive Spring Bounce
       ),
     );
@@ -85,7 +85,7 @@ class _ExpressivePillState extends State<ExpressivePill>
     _pressWidthAnim = Tween<double>(begin: 0.0, end: 8.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: Curves.easeInQuad,
+        curve: Curves.easeOutQuad,
         reverseCurve: Curves.easeOutBack,
       ),
     );
@@ -188,41 +188,38 @@ class _ExpressivePillState extends State<ExpressivePill>
     final bgColor = tile.isActive ? colors.activePill : colors.inactivePill;
     final fgColor = tile.isActive ? colors.onActivePill : colors.onInactivePill;
 
-    final tileWidget = AnimatedBuilder(
-      animation: Listenable.merge([
-        _pressHeightAnim,
-        _pressWidthAnim,
-        _neighborHeightAnim,
-        _neighborWidthAnim,
-      ]),
-      builder: (context, child) {
-        final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
-        final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
-        final currentHeight = (68.0 - hSquish).clamp(44.0, 68.0);
+    final tileWidget = RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          _pressHeightAnim,
+          _pressWidthAnim,
+          _neighborHeightAnim,
+          _neighborWidthAnim,
+        ]),
+        builder: (context, child) {
+          final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
+          final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
+          final scaleY = (1.0 - (hSquish / 68.0)).clamp(0.85, 1.0);
+          final scaleX = (1.0 - (wSquish / 140.0)).clamp(0.85, 1.0);
 
-        return SizedBox(
-          height: 68.0,
-          child: Center(
-            child: SizedBox(
-              height: currentHeight,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: (wSquish / 2).clamp(0.0, 8.0),
-                ),
-                child: child,
-              ),
+          return SizedBox(
+            height: 68.0,
+            child: Transform.scale(
+              scaleX: scaleX,
+              scaleY: scaleY,
+              child: child,
             ),
-          ),
-        );
-      },
-      child: GestureDetector(
-        onTapDown: widget.onInnerButtonTap == null ? _handleTapDown : null,
-        onTapUp: widget.onInnerButtonTap == null ? _handleTapUp : null,
-        onTapCancel: widget.onInnerButtonTap == null ? _handleTapCancel : null,
-        onLongPress: widget.onLongPress,
-        child: tile.isWide
-            ? _buildWidePill(tile, bgColor, fgColor, colors, font)
-            : _buildSquircleTile(tile, bgColor, fgColor, colors),
+          );
+        },
+        child: GestureDetector(
+          onTapDown: widget.onInnerButtonTap == null ? _handleTapDown : null,
+          onTapUp: widget.onInnerButtonTap == null ? _handleTapUp : null,
+          onTapCancel: widget.onInnerButtonTap == null ? _handleTapCancel : null,
+          onLongPress: widget.onLongPress,
+          child: tile.isWide
+              ? _buildWidePill(tile, bgColor, fgColor, colors, font)
+              : _buildSquircleTile(tile, bgColor, fgColor, colors),
+        ),
       ),
     );
 

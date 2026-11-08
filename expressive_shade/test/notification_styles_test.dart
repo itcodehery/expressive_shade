@@ -175,5 +175,32 @@ void main() {
 
       expect(dismissed, isTrue);
     });
+
+    testWidgets('Non-clearable notification cannot be dismissed on swipe', (tester) async {
+      bool dismissed = false;
+      final nonClearableNotif = sampleNotif.copyWith(isClearable: false);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NotificationCard(
+              notification: nonClearableNotif,
+              colors: colors,
+              font: font,
+              style: NotificationStyle.compact,
+              onDismiss: () {
+                dismissed = true;
+              },
+            ),
+          ),
+        ),
+      );
+
+      // Drag right past dismiss threshold
+      await tester.drag(find.byType(NotificationCard), const Offset(300, 0));
+      await tester.pumpAndSettle();
+
+      expect(dismissed, isFalse);
+    });
   });
 }

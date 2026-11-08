@@ -42,6 +42,7 @@ class _SpringyDismissibleNotificationState
   late AnimationController _dismissController;
   late Animation<double> _slideOutAnimation;
   late Animation<double> _heightCollapseAnimation;
+  late Animation<double> _sizeCollapseAnimation;
 
   @override
   void initState() {
@@ -50,19 +51,21 @@ class _SpringyDismissibleNotificationState
     // 1. Elastic Snap-back Controller (Curves.elasticOut for organic physical spring bounce)
     _springController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 400),
+      duration: const Duration(milliseconds: 320),
     );
+    _springAnimation = const AlwaysStoppedAnimation(0.0);
 
     // 2. Multi-stage Dismiss Controller (Slide out -> Size collapse)
     _dismissController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
+      duration: const Duration(milliseconds: 260),
     );
 
     _heightCollapseAnimation = CurvedAnimation(
       parent: _dismissController,
       curve: const Interval(0.35, 1.0, curve: Curves.fastOutSlowIn),
     );
+    _sizeCollapseAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_heightCollapseAnimation);
   }
 
   @override
@@ -116,22 +119,16 @@ class _SpringyDismissibleNotificationState
       _springAnimation = Tween<double>(begin: startOffset, end: 0.0).animate(
         CurvedAnimation(
           parent: _springController,
-          curve: Curves.elasticOut,
+          curve: Curves.easeOutBack,
         ),
       );
-      _springController.reset();
-      _springController.forward();
-      _springController.addListener(_onSpringTick);
-    }
-  }
-
-  void _onSpringTick() {
-    if (!mounted) return;
-    setState(() {
-      _dragOffset = _springAnimation.value;
-    });
-    if (_springController.isCompleted) {
-      _springController.removeListener(_onSpringTick);
+      _springController.forward(from: 0.0).then((_) {
+        if (mounted) {
+          setState(() {
+            _dragOffset = 0.0;
+          });
+        }
+      });
     }
   }
 
@@ -179,41 +176,36 @@ class _SpringyDismissibleNotificationState
             ),
           ),
 
-          // Animated Foreground Card
-          AnimatedBuilder(
-            animation: Listenable.merge([
-              _springController,
-              _dismissController,
-            ]),
-            builder: (context, child) {
-              final currentDx = _isDismissing
-                  ? _slideOutAnimation.value
-                  : _dragOffset;
-              final dragFraction = (currentDx.abs() / screenWidth).clamp(0.0, 1.0);
-              final rotation = (currentDx / screenWidth) * -0.05;
-              final opacity = (1.0 - dragFraction * 0.40).clamp(0.0, 1.0);
+          // Animated Foreground Card (GPU transform, zero saveLayer offscreen allocations)
+          RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: Listenable.merge([
+                _springController,
+                _dismissController,
+              ]),
+              builder: (context, child) {
+                final currentDx = _isDismissing
+                    ? _slideOutAnimation.value
+                    : (_springController.isAnimating ? _springAnimation.value : _dragOffset);
+                final rotation = (currentDx / screenWidth) * -0.05;
 
-              return Transform.translate(
-                offset: Offset(currentDx, 0),
-                child: Transform.rotate(
-                  angle: rotation,
-                  child: Opacity(
-                    opacity: opacity,
+                return Transform.translate(
+                  offset: Offset(currentDx, 0),
+                  child: Transform.rotate(
+                    angle: rotation,
                     child: child,
                   ),
-                ),
-              );
-            },
-            child: widget.child,
+                );
+              },
+              child: widget.child,
+            ),
           ),
         ],
       );
     }
 
     return SizeTransition(
-      sizeFactor: _isDismissing
-          ? Tween<double>(begin: 1.0, end: 0.0).animate(_heightCollapseAnimation)
-          : const AlwaysStoppedAnimation(1.0),
+      sizeFactor: _isDismissing ? _sizeCollapseAnimation : const AlwaysStoppedAnimation(1.0),
       alignment: Alignment.center,
       child: Padding(
         padding: widget.margin,

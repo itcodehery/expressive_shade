@@ -255,6 +255,69 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     }
 
     // --- Other 4 Styles (Android 17, iOS, OneUI, HyperOS) ---
+    final bool canDismiss = notification.isClearable;
+    final cardContent = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (notification.canOpen && widget.onTap != null) {
+          widget.onTap!();
+        } else {
+          HapticFeedback.selectionClick();
+          setState(() => _isExpanded = !_isExpanded);
+        }
+      },
+      onLongPress: () {
+        HapticFeedback.heavyImpact();
+        setState(() => _isShowingSettings = true);
+      },
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: borderRadius,
+            border: _computeBorder(colors),
+            boxShadow: _computeBoxShadow(colors),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Render Style-specific Content
+              switch (widget.style) {
+                NotificationStyle.android17 => _buildAndroid17Content(notification, colors, font),
+                NotificationStyle.ios => _buildIosContent(notification, colors, font),
+                NotificationStyle.oneui => _buildOneUiContent(notification, colors, font),
+                NotificationStyle.hyperOS => _buildHyperOsContent(notification, colors, font),
+                NotificationStyle.compact => const SizedBox.shrink(),
+              },
+
+              // Inline Action Buttons (Collapsed by default, revealed when expanded)
+              if (_isExpanded && (notification.actions.isNotEmpty || widget.onSnooze != null)) ...[
+                const SizedBox(height: 10),
+                _buildActionsRow(notification, colors, font),
+              ],
+
+              // Inline reply field
+              if (_isExpanded && _replyingTo != null) ...[
+                const SizedBox(height: 10),
+                _buildInlineReplyField(colors, font),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!canDismiss) {
+      return Padding(
+        padding: margin,
+        child: cardContent,
+      );
+    }
+
     return SpringyDismissibleNotification(
       key: Key(notification.id),
       colors: colors,
@@ -263,60 +326,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
       onDismissed: () {
         widget.onDismiss();
       },
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          if (notification.canOpen && widget.onTap != null) {
-            widget.onTap!();
-          } else {
-            HapticFeedback.selectionClick();
-            setState(() => _isExpanded = !_isExpanded);
-          }
-        },
-        onLongPress: () {
-          HapticFeedback.heavyImpact();
-          setState(() => _isShowingSettings = true);
-        },
-        child: ClipRRect(
-          borderRadius: borderRadius,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: borderRadius,
-              border: _computeBorder(colors),
-              boxShadow: _computeBoxShadow(colors),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Render Style-specific Content
-                switch (widget.style) {
-                  NotificationStyle.android17 => _buildAndroid17Content(notification, colors, font),
-                  NotificationStyle.ios => _buildIosContent(notification, colors, font),
-                  NotificationStyle.oneui => _buildOneUiContent(notification, colors, font),
-                  NotificationStyle.hyperOS => _buildHyperOsContent(notification, colors, font),
-                  NotificationStyle.compact => const SizedBox.shrink(),
-                },
-
-                // Inline Action Buttons (Collapsed by default, revealed when expanded)
-                if (_isExpanded && (notification.actions.isNotEmpty || widget.onSnooze != null)) ...[
-                  const SizedBox(height: 10),
-                  _buildActionsRow(notification, colors, font),
-                ],
-
-                // Inline reply field
-                if (_isExpanded && _replyingTo != null) ...[
-                  const SizedBox(height: 10),
-                  _buildInlineReplyField(colors, font),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
+      child: cardContent,
     );
   }
 
@@ -337,14 +347,16 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     final velocity = details.primaryVelocity ?? 0.0;
     final dismissThreshold = (screenWidth * 0.35).clamp(80.0, 200.0);
 
+    final canDismiss = widget.notification.isClearable;
+
     // 1. Fully Swiping Right -> Dismiss to Right
-    if (_compactDragDx > dismissThreshold || velocity > 400.0) {
+    if (canDismiss && (_compactDragDx > dismissThreshold || velocity > 400.0)) {
       _dismissCompact(toRight: true);
       return;
     }
 
     // 2. Fully Swiping Left -> Dismiss to Left (only if actions not revealed, or swiped far left)
-    if (_compactDragDx < -dismissThreshold || velocity < -400.0) {
+    if (canDismiss && (_compactDragDx < -dismissThreshold || velocity < -400.0)) {
       _dismissCompact(toRight: false);
       return;
     }
@@ -389,7 +401,9 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
 
   void _dismissCompact({required bool toRight}) {
     if (_compactIsDismissing) return;
-    _compactIsDismissing = true;
+    setState(() {
+      _compactIsDismissing = true;
+    });
     HapticFeedback.mediumImpact();
     final screenWidth = MediaQuery.sizeOf(context).width;
     final targetDx = toRight ? (screenWidth + 50) : (-screenWidth - 50);
@@ -404,7 +418,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
       ),
     );
 
-    _compactDismissController.forward().then((_) {
+    _compactDismissController.forward(from: 0.0).then((_) {
       if (mounted) {
         widget.onDismiss();
       }
@@ -419,13 +433,6 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     required EdgeInsets margin,
     required Color cardBg,
   }) {
-    final screenWidth = MediaQuery.sizeOf(context).width;
-    final currentDx = _compactIsDismissing
-        ? (_compactSlideOutAnimation.value)
-        : _compactDragDx;
-    final dragFraction = (currentDx.abs() / screenWidth).clamp(0.0, 1.0);
-    final opacity = (1.0 - dragFraction * 0.40).clamp(0.0, 1.0);
-
     return SizeTransition(
       sizeFactor: _compactIsDismissing
           ? Tween<double>(begin: 1.0, end: 0.0).animate(_compactHeightCollapseAnimation)
@@ -450,21 +457,22 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
               _snapCompactTo(revealed: true);
             }
           },
-          child: AnimatedBuilder(
-            animation: Listenable.merge([
-              _compactSpringController,
-              _compactDismissController,
-            ]),
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(currentDx, 0),
-                child: Opacity(
-                  opacity: opacity,
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: Listenable.merge([
+                _compactSpringController,
+                _compactDismissController,
+              ]),
+              builder: (context, child) {
+                final dx = _compactIsDismissing
+                    ? _compactSlideOutAnimation.value
+                    : _compactDragDx;
+                return Transform.translate(
+                  offset: Offset(dx, 0),
                   child: child,
-                ),
-              );
-            },
-            child: ClipRRect(
+                );
+              },
+              child: ClipRRect(
               borderRadius: borderRadius,
               child: Container(
                 constraints: const BoxConstraints(minHeight: 52),
@@ -509,8 +517,9 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildCompactRestingRow(NotificationModel notification, ExpressiveThemeColors colors, FontConfig font) {
     return Row(

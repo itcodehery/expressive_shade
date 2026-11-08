@@ -50,14 +50,14 @@ class _MatrixTileState extends State<MatrixTile>
     _pressHeightAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
       CurvedAnimation(
         parent: _pressController,
-        curve: Curves.easeInQuad,
+        curve: Curves.easeOutQuad,
         reverseCurve: Curves.easeOutBack,
       ),
     );
     _pressWidthAnim = Tween<double>(begin: 0.0, end: 6.0).animate(
       CurvedAnimation(
         parent: _pressController,
-        curve: Curves.easeInQuad,
+        curve: Curves.easeOutQuad,
         reverseCurve: Curves.easeOutBack,
       ),
     );
@@ -148,34 +148,30 @@ class _MatrixTileState extends State<MatrixTile>
     final colors = widget.colors;
     final isActive = tile.isActive;
 
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        _pressHeightAnim,
-        _pressWidthAnim,
-        _neighborHeightAnim,
-        _neighborWidthAnim,
-      ]),
-      builder: (context, child) {
-        final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
-        final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
-        final currentHeight = (58.0 - hSquish).clamp(40.0, 58.0);
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          _pressHeightAnim,
+          _pressWidthAnim,
+          _neighborHeightAnim,
+          _neighborWidthAnim,
+        ]),
+        builder: (context, child) {
+          final hSquish = _pressHeightAnim.value + _neighborHeightAnim.value;
+          final wSquish = _pressWidthAnim.value + _neighborWidthAnim.value;
+          final scaleY = (1.0 - (hSquish / 58.0)).clamp(0.85, 1.0);
+          final scaleX = (1.0 - (wSquish / 80.0)).clamp(0.85, 1.0);
 
-        return SizedBox(
-          height: 58.0,
-          child: Center(
-            child: SizedBox(
-              height: currentHeight,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: (wSquish / 2).clamp(0.0, 8.0),
-                ),
-                child: child,
-              ),
+          return SizedBox(
+            height: 58.0,
+            child: Transform.scale(
+              scaleX: scaleX,
+              scaleY: scaleY,
+              child: child,
             ),
-          ),
-        );
-      },
-      child: GestureDetector(
+          );
+        },
+        child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTapDown: _handleTapDown,
         onTapUp: _handleTapUp,
@@ -204,6 +200,7 @@ class _MatrixTileState extends State<MatrixTile>
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

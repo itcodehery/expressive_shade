@@ -46,7 +46,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       CurvedAnimation(
         parent: _animController,
         curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeInCubic,
+        reverseCurve: Curves.easeOutQuad,
       ),
     );
 
@@ -97,7 +97,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     try {
       context.read<ShadeStateProvider>().flushSave();
     } catch (_) {}
-    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
+    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInQuad).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -115,7 +115,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     try {
       action();
     } catch (_) {}
-    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInCubic).then((_) {
+    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInQuad).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -142,13 +142,13 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<ShadeStateProvider>();
-
-    final themeColors = ExpressiveThemeColors.fromSettings(
-      source: state.themeSource,
-      preset: state.selectedPreset,
-      custom: state.customTheme,
-      systemMonetColor: state.systemMonetColor,
+    final themeColors = context.select<ShadeStateProvider, ExpressiveThemeColors>(
+      (state) => ExpressiveThemeColors.fromSettings(
+        source: state.themeSource,
+        preset: state.selectedPreset,
+        custom: state.customTheme,
+        systemMonetColor: state.systemMonetColor,
+      ),
     );
 
     return PopScope(
@@ -204,9 +204,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
                           behavior: HitTestBehavior.translucent,
                           onTap: _dismissOverlay,
                           onVerticalDragUpdate: (details) {
-                            final screenHeight = MediaQuery.of(context).size.height;
-                            final delta = details.delta.dy / screenHeight;
-                            _handleShadeDragUpdate(delta);
+                            _handleShadeDragUpdate(details.delta.dy);
                           },
                           onVerticalDragEnd: (details) {
                             final velocity = details.primaryVelocity ?? 0;

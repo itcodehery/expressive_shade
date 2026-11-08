@@ -94,13 +94,21 @@ class _UnifiedPaginatedTilesContainerState
       children: [
         AnimatedBuilder(
           animation: widget.bouncyAnimation,
-          builder: (context, _) {
+          builder: (context, child) {
             final currentHeight = collapsedHeight +
                 (expandedHeight - collapsedHeight) *
                     widget.bouncyAnimation.value;
 
             return SizedBox(
               height: currentHeight,
+              child: ClipRect(
+                child: child,
+              ),
+            );
+          },
+          child: SizedBox(
+            height: expandedHeight,
+            child: RepaintBoundary(
               child: NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
                   if (notification is ScrollStartNotification ||
@@ -133,8 +141,8 @@ class _UnifiedPaginatedTilesContainerState
                   },
                 ),
               ),
-            );
-          },
+            ),
+          ),
         ),
         if (showIndicator) ...[
           const SizedBox(height: 12),

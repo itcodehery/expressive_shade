@@ -163,6 +163,7 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                     "content" to (text ?: ""),
                     "timestamp" to timestamp,
                     "isOngoing" to sbn.isOngoing,
+                    "isClearable" to sbn.isClearable,
                     "actions" to actions,
                     "canOpen" to (notification.contentIntent != null),
                     "isGroupSummary" to ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0),

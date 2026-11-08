@@ -40,18 +40,28 @@ class HardwareChannelHandler(
             "toggleBatterySaver" -> toggleBatterySaver(result)
             "toggleAirplane" -> toggleAirplane(result)
             "toggleHotspot" -> toggleHotspot(result)
+            "toggleLocation" -> toggleLocation(result)
+            "toggleNightLight" -> toggleNightLight(result)
+            "toggleNfc" -> toggleNfc(result)
+            "toggleMobileData" -> toggleMobileData(result)
+            "toggleDataSaver" -> toggleDataSaver(result)
             "triggerCast", "openCastSettings" -> open(
                 result,
                 { Intent("android.settings.CAST_SETTINGS") },
                 { Intent("com.android.settings.action.MEDIA_OUTPUT") },
                 { Intent(Settings.ACTION_DISPLAY_SETTINGS) }
             )
-            "toggleDataSaver", "openDataSaverSettings" -> open(
+            "openDataSaverSettings" -> open(
                 result,
                 { Intent("android.settings.DATA_SAVER_SETTINGS") },
                 { Intent(Settings.ACTION_WIRELESS_SETTINGS) }
             )
-            "toggleExtraDim", "openExtraDimSettings" -> toggleExtraDim(result)
+            "toggleExtraDim" -> toggleExtraDim(result)
+            "openExtraDimSettings" -> open(
+                result,
+                { Intent("android.settings.REDUCE_BRIGHT_COLORS_SETTINGS") },
+                { Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
+            )
             "openQrScanner" -> openQrScanner(result)
             "openNfcSettings" -> open(result, { Intent(Settings.ACTION_NFC_SETTINGS) })
             "openCalculator" -> openCalculator(result)
@@ -73,8 +83,7 @@ class HardwareChannelHandler(
                 },
                 { Intent(Settings.ACTION_WIFI_SETTINGS) }
             )
-            // Android gives third-party apps no API to flip mobile data, so both open settings.
-            "openMobileDataSettings", "toggleMobileData" -> open(
+            "openMobileDataSettings" -> open(
                 result,
                 { Intent(Settings.ACTION_DATA_ROAMING_SETTINGS) },
                 { Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS) }
@@ -159,15 +168,25 @@ class HardwareChannelHandler(
             val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             val adapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
             if (adapter != null) {
-                @Suppress("DEPRECATION")
-                val ok = if (adapter.isEnabled) adapter.disable() else adapter.enable()
-                result.success(ok)
+                var toggled = false
+                try {
+                    val current = if (adapter.isEnabled) 1 else 0
+                    val target = if (current == 1) 0 else 1
+                    Settings.Global.putInt(context.contentResolver, "bluetooth_on", target)
+                    toggled = true
+                } catch (_: Exception) {}
+
+                if (!toggled) {
+                    @Suppress("DEPRECATION")
+                    toggled = if (adapter.isEnabled) adapter.disable() else adapter.enable()
+                }
+                onStateChanged()
+                result.success(toggled)
             } else {
                 result.success(false)
             }
         } catch (_: Exception) {
-            // Fall back to the Bluetooth panel on modern Android
-            open(result, { bluetoothIntent() })
+            result.success(false)
         }
     }
 
@@ -223,7 +242,6 @@ class HardwareChannelHandler(
                 val current = Settings.System.getInt(context.contentResolver, Settings.System.ACCELEROMETER_ROTATION, 1)
                 val newSetting = if (current == 1) 0 else 1
                 Settings.System.putInt(context.contentResolver, Settings.System.ACCELEROMETER_ROTATION, newSetting)
-                onStateChanged()
                 result.success(newSetting == 1)
             } else {
                 result.success(null)
@@ -262,7 +280,7 @@ class HardwareChannelHandler(
             onStateChanged()
             result.success(target == 1)
         } catch (_: Exception) {
-            open(result, { Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS) })
+            result.success(null)
         }
     }
 
@@ -276,7 +294,7 @@ class HardwareChannelHandler(
             onStateChanged()
             result.success(newState == 1)
         } catch (_: Exception) {
-            open(result, { Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS) })
+            result.success(null)
         }
     }
 
@@ -290,11 +308,7 @@ class HardwareChannelHandler(
             onStateChanged()
             result.success(!isEnabled)
         } catch (_: Exception) {
-            open(
-                result,
-                { Intent("android.settings.TETHER_SETTINGS") },
-                { Intent(Settings.ACTION_WIRELESS_SETTINGS) }
-            )
+            result.success(null)
         }
     }
 
@@ -306,11 +320,71 @@ class HardwareChannelHandler(
             onStateChanged()
             result.success(newState == 1)
         } catch (_: Exception) {
-            open(
-                result,
-                { Intent("android.settings.REDUCE_BRIGHT_COLORS_SETTINGS") },
-                { Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS) }
-            )
+            result.success(null)
+        }
+    }
+
+    private fun toggleLocation(result: MethodChannel.Result) {
+        try {
+            val locManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            val isEnabled = locManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+            val newMode = if (isEnabled) Settings.Secure.LOCATION_MODE_OFF else Settings.Secure.LOCATION_MODE_HIGH_ACCURACY
+            Settings.Secure.putInt(context.contentResolver, Settings.Secure.LOCATION_MODE, newMode)
+            onStateChanged()
+            result.success(!isEnabled)
+        } catch (_: Exception) {
+            result.success(null)
+        }
+    }
+
+    private fun toggleNightLight(result: MethodChannel.Result) {
+        try {
+            val current = Settings.Secure.getInt(context.contentResolver, "night_display_activated", 0)
+            val target = if (current == 1) 0 else 1
+            Settings.Secure.putInt(context.contentResolver, "night_display_activated", target)
+            onStateChanged()
+            result.success(target == 1)
+        } catch (_: Exception) {
+            result.success(null)
+        }
+    }
+
+    private fun toggleNfc(result: MethodChannel.Result) {
+        try {
+            val nfcManager = context.getSystemService(Context.NFC_SERVICE) as? android.nfc.NfcManager
+            val adapter = nfcManager?.defaultAdapter
+            val isEnabled = adapter?.isEnabled == true
+            val target = if (isEnabled) 0 else 1
+            Settings.Global.putInt(context.contentResolver, "nfc_on", target)
+            onStateChanged()
+            result.success(target == 1)
+        } catch (_: Exception) {
+            result.success(null)
+        }
+    }
+
+    private fun toggleMobileData(result: MethodChannel.Result) {
+        try {
+            val telManager = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            val isEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) telManager.isDataEnabled else false
+            val target = if (isEnabled) 0 else 1
+            Settings.Global.putInt(context.contentResolver, "mobile_data", target)
+            onStateChanged()
+            result.success(target == 1)
+        } catch (_: Exception) {
+            result.success(null)
+        }
+    }
+
+    private fun toggleDataSaver(result: MethodChannel.Result) {
+        try {
+            val current = Settings.Global.getInt(context.contentResolver, "data_saver_mode", 0)
+            val target = if (current == 1) 0 else 1
+            Settings.Global.putInt(context.contentResolver, "data_saver_mode", target)
+            onStateChanged()
+            result.success(target == 1)
+        } catch (_: Exception) {
+            result.success(null)
         }
     }
 

@@ -292,6 +292,16 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
                               state.openNotification(notif);
                             }
                           },
+                          appDockEnabled: state.appDockEnabled,
+                          appDockApps: state.appDockApps,
+                          onLaunchApp: (pkg) {
+                            if (widget.onDismissAndExecute != null) {
+                              widget.onDismissAndExecute!(
+                                  () => state.launchApp(pkg));
+                            } else {
+                              state.launchApp(pkg);
+                            }
+                          },
                         ),
                       ShadeMode.unified => UnifiedShadeView(
                           scrollController: _unifiedScrollController,
@@ -645,8 +655,7 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
       // In Flutter vertical scrolling, overscroll > 0 indicates pulling up past the bottom (maxScrollExtent)
       if (notification.overscroll > 0) {
         _bottomOverscrollAccumulator += notification.overscroll;
-        final screenHeight = MediaQuery.of(context).size.height;
-        widget.onDragShadeUpdate?.call(-notification.overscroll / screenHeight);
+        widget.onDragShadeUpdate?.call(-notification.overscroll);
       }
     } else if (notification is ScrollEndNotification) {
       final metrics = notification.metrics;

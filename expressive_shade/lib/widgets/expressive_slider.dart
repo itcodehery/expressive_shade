@@ -31,11 +31,15 @@ class ExpressiveSlider extends StatefulWidget {
 
 class _ExpressiveSliderState extends State<ExpressiveSlider> {
   bool _isDragging = false;
+  double _dragValue = 0.0;
 
   void _updateFromPosition(Offset localPos, double width) {
     if (width <= 0) return;
     final newVal = (localPos.dx / width).clamp(0.0, 1.0);
-    if ((newVal - widget.value).abs() > 0.008) {
+    if ((newVal - (_isDragging ? _dragValue : widget.value)).abs() > 0.004) {
+      setState(() {
+        _dragValue = newVal;
+      });
       widget.onChanged(newVal);
     }
   }
@@ -43,7 +47,7 @@ class _ExpressiveSliderState extends State<ExpressiveSlider> {
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
-    final fillPercent = widget.value.clamp(0.0, 1.0);
+    final fillPercent = (_isDragging ? _dragValue : widget.value).clamp(0.0, 1.0);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -54,7 +58,10 @@ class _ExpressiveSliderState extends State<ExpressiveSlider> {
           padding: const EdgeInsets.symmetric(vertical: 6.0),
           child: GestureDetector(
             onHorizontalDragStart: (details) {
-              setState(() => _isDragging = true);
+              setState(() {
+                _isDragging = true;
+                _dragValue = widget.value;
+              });
               HapticFeedback.selectionClick();
               _updateFromPosition(details.localPosition, totalWidth);
             },

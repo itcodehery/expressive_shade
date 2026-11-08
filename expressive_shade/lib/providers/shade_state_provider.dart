@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/font_config.dart';
+import '../models/app_dock_item.dart';
 import '../models/media_player_style.dart';
 import '../models/notification_model.dart';
 import '../models/notification_style.dart';
@@ -10,6 +11,7 @@ import '../models/qs_tile_model.dart';
 import '../models/shade_mode.dart';
 import '../models/shade_theme.dart';
 import '../models/slider_style.dart';
+import '../services/system_apps_service.dart';
 import '../services/system_hardware_service.dart';
 import '../services/system_media_service.dart';
 import '../services/system_monet_service.dart';
@@ -191,6 +193,23 @@ class ShadeStateProvider extends ChangeNotifier {
         }
       } catch (_) {}
     }
+    if (s['appDockEnabled'] != null) {
+      final val = s['appDockEnabled'];
+      _appDockEnabled = val == true || val.toString() == 'true';
+    }
+    if (s['appDockApps'] != null) {
+      try {
+        final dynamic raw = s['appDockApps'];
+        final List<dynamic> list =
+            (raw is String) ? jsonDecode(raw) : (raw as List);
+        _appDockApps.clear();
+        for (final item in list.take(8)) {
+          _appDockApps.add(
+            AppDockItem.fromJson(Map<String, dynamic>.from(item as Map)),
+          );
+        }
+      } catch (_) {}
+    }
     notifyListeners();
   }
 
@@ -226,6 +245,7 @@ class ShadeStateProvider extends ChangeNotifier {
         'selectedFont',
         'networkTileStyle',
         'tiles',
+        'appDock',
       });
     }
     if (_dirtySettings.isEmpty) return;
@@ -294,6 +314,11 @@ class ShadeStateProvider extends ChangeNotifier {
       // Only the tiles are re-serialized, and only when they changed.
       map['tiles'] = jsonEncode(_tiles.map((t) => t.toJson()).toList());
     }
+    if (dirty.contains('appDock')) {
+      map['appDockEnabled'] = _appDockEnabled;
+      map['appDockApps'] =
+          jsonEncode(_appDockApps.map((a) => a.toJson()).toList());
+    }
     SystemSettingsService.saveSettings(map);
   }
 
@@ -332,6 +357,8 @@ class ShadeStateProvider extends ChangeNotifier {
 
   void markShadeOpened() {
     _shadeOpenEpoch++;
+    _loadLiveNotifications();
+    _loadInitialHardwareValues();
     notifyListeners();
   }
 
@@ -550,6 +577,42 @@ class ShadeStateProvider extends ChangeNotifier {
       final on = hw['batterySaver'] as bool;
       _updateTile(
         'battery_saver',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'Active' : 'Off'),
+      );
+    }
+
+    // 8b. Night Light
+    if (hw['nightLight'] is bool) {
+      final on = hw['nightLight'] as bool;
+      _updateTile(
+        'night_light',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'Warm' : 'Off'),
+      );
+    }
+
+    // 8c. Extra Dim
+    if (hw['extraDim'] is bool) {
+      final on = hw['extraDim'] as bool;
+      _updateTile(
+        'extra_dim',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'Dimmed' : 'Off'),
+      );
+    }
+
+    // 8d. NFC
+    if (hw['nfc'] is bool) {
+      final on = hw['nfc'] as bool;
+      _updateTile(
+        'nfc',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
+    }
+
+    // 8e. Data Saver
+    if (hw['dataSaver'] is bool) {
+      final on = hw['dataSaver'] as bool;
+      _updateTile(
+        'data_saver',
         (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
       );
     }
@@ -586,6 +649,66 @@ class ShadeStateProvider extends ChangeNotifier {
   ShadeMode _shadeMode =
       ShadeMode.unified; // Default to Android 17 Unified Shade
   ShadeMode get shadeMode => _shadeMode;
+
+  // App Dock Configuration (Split Shade Mode only, up to 8 apps)
+  bool _appDockEnabled = false;
+  bool get appDockEnabled => _appDockEnabled;
+
+  final List<AppDockItem> _appDockApps = [];
+  List<AppDockItem> get appDockApps => List.unmodifiable(_appDockApps);
+
+  void setAppDockEnabled(bool enabled) {
+    if (_appDockEnabled != enabled) {
+      _appDockEnabled = enabled;
+      _scheduleSave({'appDock'});
+      notifyListeners();
+    }
+  }
+
+  void setAppDockApps(List<AppDockItem> apps) {
+    _appDockApps.clear();
+    _appDockApps.addAll(apps.take(8));
+    _scheduleSave({'appDock'});
+    notifyListeners();
+  }
+
+  void addAppDockItem(AppDockItem item) {
+    if (_appDockApps.length >= 8) return;
+    if (_appDockApps.any((a) => a.packageName == item.packageName)) return;
+    _appDockApps.add(item);
+    _scheduleSave({'appDock'});
+    notifyListeners();
+  }
+
+  void removeAppDockItem(String packageName) {
+    _appDockApps.removeWhere((a) => a.packageName == packageName);
+    _scheduleSave({'appDock'});
+    notifyListeners();
+  }
+
+  void updateAppDockItemColor(String packageName, int newColorValue) {
+    final idx = _appDockApps.indexWhere((a) => a.packageName == packageName);
+    if (idx != -1) {
+      _appDockApps[idx] = _appDockApps[idx].copyWith(colorValue: newColorValue);
+      _scheduleSave({'appDock'});
+      notifyListeners();
+    }
+  }
+
+  void reorderAppDockItems(int oldIndex, int newIndex) {
+    if (oldIndex < 0 || oldIndex >= _appDockApps.length) return;
+    if (newIndex < 0 || newIndex > _appDockApps.length) return;
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = _appDockApps.removeAt(oldIndex);
+    _appDockApps.insert(newIndex, item);
+    _scheduleSave({'appDock'});
+    notifyListeners();
+  }
+
+  Future<bool> launchApp(String packageName) =>
+      SystemAppsService.launchApp(packageName);
 
   // Split Panel Tab (0: Notifications, 1: Quick Settings)
   int _splitTabIndex = 1;
@@ -732,21 +855,16 @@ class ShadeStateProvider extends ChangeNotifier {
   // Real Notifications (no mock data on startup)
   List<NotificationModel> _notifications = [];
   List<NotificationModel> get notifications => _notifications;
+  final Set<String> _locallyDismissedIds = {};
 
   Future<void> _loadLiveNotifications() async {
     final liveList = await SystemNotificationService.getActiveNotifications();
-    if (_notifications.length == liveList.length) {
-      var unchanged = true;
-      for (var i = 0; i < liveList.length; i++) {
-        if (!_notifications[i].hasSameContentAs(liveList[i])) {
-          unchanged = false;
-          break;
-        }
-      }
-      if (unchanged) return; // nothing visible changed; skip the rebuild
-    }
-    // Secondary guardrail: never show media notifications or own overlay service notifications
-    _notifications = liveList.where((n) {
+    // Prune locally dismissed IDs that Android has now successfully removed
+    _locallyDismissedIds.removeWhere((id) => !liveList.any((n) => n.id == id));
+
+    // Secondary guardrail: filter locally dismissed, ongoing notifications, and own overlay alert
+    final filtered = liveList.where((n) {
+      if (_locallyDismissedIds.contains(n.id)) return false;
       final text = '${n.title} ${n.content}'.toLowerCase();
       final isOverlayAlert =
           text.contains('expressiveshade') &&
@@ -756,6 +874,19 @@ class ShadeStateProvider extends ChangeNotifier {
               text.contains('active'));
       return !isOverlayAlert;
     }).toList();
+
+    if (_notifications.length == filtered.length) {
+      var unchanged = true;
+      for (var i = 0; i < filtered.length; i++) {
+        if (!_notifications[i].hasSameContentAs(filtered[i])) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return; // nothing visible changed; skip the rebuild
+    }
+
+    _notifications = filtered;
     notifyListeners();
   }
 
@@ -811,15 +942,25 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  int _lastBrightnessIpc = 0;
   void setBrightness(double val) {
     _brightness = val.clamp(0.0, 1.0);
-    SystemHardwareService.setBrightness(_brightness);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBrightnessIpc > 30) {
+      _lastBrightnessIpc = now;
+      SystemHardwareService.setBrightness(_brightness);
+    }
     notifyListeners();
   }
 
+  int _lastVolumeIpc = 0;
   void setVolume(double val) {
     _volume = val.clamp(0.0, 1.0);
-    SystemHardwareService.setVolume(_volume);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastVolumeIpc > 30) {
+      _lastVolumeIpc = now;
+      SystemHardwareService.setVolume(_volume);
+    }
     notifyListeners();
   }
 
@@ -847,7 +988,7 @@ class ShadeStateProvider extends ChangeNotifier {
           isActive: newActive,
           subtitle: newActive ? (_carrierName.isNotEmpty ? _carrierName : 'Active') : 'Off',
         );
-        SystemHardwareService.openMobileDataSettings();
+        SystemHardwareService.toggleMobileData();
       } else if (id == 'bluetooth') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
@@ -859,7 +1000,12 @@ class ShadeStateProvider extends ChangeNotifier {
           isActive: newActive,
           subtitle: newActive ? 'On' : 'Off',
         );
-        SystemHardwareService.toggleAutoRotate();
+        SystemHardwareService.toggleAutoRotate().then((res) {
+          if (res != null) {
+            _updateTile('autorotate', (t) => t.copyWith(isActive: res, subtitle: res ? 'On' : 'Off'));
+            notifyListeners();
+          }
+        });
       } else if (id == 'dnd') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
@@ -909,19 +1055,19 @@ class ShadeStateProvider extends ChangeNotifier {
           isActive: newActive,
           subtitle: newActive ? 'Precise' : 'Off',
         );
-        SystemHardwareService.openLocationSettings();
+        SystemHardwareService.toggleLocation();
       } else if (id == 'night_light') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
           subtitle: newActive ? 'Warm' : 'Off',
         );
-        SystemHardwareService.openNightLightSettings();
+        SystemHardwareService.toggleNightLight();
       } else if (id == 'nfc') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
           subtitle: newActive ? 'On' : 'Off',
         );
-        SystemHardwareService.openNfcSettings();
+        SystemHardwareService.toggleNfc();
       } else if (id == 'calculator') {
         SystemHardwareService.openCalculator();
       } else if (id == 'alarm' || id == 'timer' || id == 'stopwatch') {
@@ -1056,6 +1202,7 @@ class ShadeStateProvider extends ChangeNotifier {
   }
 
   void dismissNotification(String id) {
+    _locallyDismissedIds.add(id);
     _notifications.removeWhere((n) => n.id == id);
     SystemNotificationService.cancelNotification(id);
     notifyListeners();
@@ -1063,8 +1210,9 @@ class ShadeStateProvider extends ChangeNotifier {
 
   void dismissAllForApp(String appName) {
     final toRemove =
-        _notifications.where((n) => n.appName == appName).toList();
+        _notifications.where((n) => n.appName == appName && n.isClearable).toList();
     for (final notif in toRemove) {
+      _locallyDismissedIds.add(notif.id);
       _notifications.remove(notif);
       SystemNotificationService.cancelNotification(notif.id);
     }

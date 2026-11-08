@@ -3,7 +3,17 @@ import 'package:flutter/services.dart';
 class SystemHardwareService {
   static const MethodChannel _channel = MethodChannel('com.expressive_shade/hardware');
 
-  static void Function(Map<String, dynamic> state)? onHardwareStateChanged;
+  static final Set<void Function(Map<String, dynamic> state)> _listeners = {};
+
+  static set onHardwareStateChanged(void Function(Map<String, dynamic> state)? callback) {
+    if (callback != null) {
+      _listeners.add(callback);
+    }
+  }
+
+  static void addListener(void Function(Map<String, dynamic> state) callback) {
+    _listeners.add(callback);
+  }
 
   static void init() {
     _channel.setMethodCallHandler((call) async {
@@ -11,7 +21,11 @@ class SystemHardwareService {
         final raw = call.arguments;
         if (raw is Map) {
           final typed = Map<String, dynamic>.from(raw);
-          onHardwareStateChanged?.call(typed);
+          for (final l in Set<void Function(Map<String, dynamic> state)>.from(_listeners)) {
+            try {
+              l(typed);
+            } catch (_) {}
+          }
         }
       }
     });
@@ -119,16 +133,52 @@ class SystemHardwareService {
     } catch (_) {}
   }
 
-  static Future<void> toggleDataSaver() async {
+  static Future<bool?> toggleDataSaver() async {
     try {
-      await _channel.invokeMethod('toggleDataSaver');
-    } catch (_) {}
+      return await _channel.invokeMethod<bool>('toggleDataSaver');
+    } catch (_) {
+      return null;
+    }
   }
 
-  static Future<void> toggleExtraDim() async {
+  static Future<bool?> toggleExtraDim() async {
     try {
-      await _channel.invokeMethod('toggleExtraDim');
-    } catch (_) {}
+      return await _channel.invokeMethod<bool>('toggleExtraDim');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool?> toggleLocation() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleLocation');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool?> toggleNightLight() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleNightLight');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool?> toggleNfc() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleNfc');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool?> toggleMobileData() async {
+    try {
+      return await _channel.invokeMethod<bool>('toggleMobileData');
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> openQrScanner() async {

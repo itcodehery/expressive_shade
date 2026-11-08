@@ -178,6 +178,19 @@ object HardwareState {
             }
         } catch (_: Exception) {}
 
+        // 10. Night Light, NFC, Extra Dim, Data Saver
+        var isNightLight = false
+        var isNfc = false
+        var isExtraDim = false
+        var isDataSaver = false
+        try {
+            isNightLight = Settings.Secure.getInt(appContext.contentResolver, "night_display_activated", 0) == 1
+            isExtraDim = Settings.Secure.getInt(appContext.contentResolver, "reduce_bright_colors_activated", 0) == 1
+            isDataSaver = Settings.Global.getInt(appContext.contentResolver, "data_saver_mode", 0) == 1
+            val nfcManager = appContext.getSystemService(Context.NFC_SERVICE) as? android.nfc.NfcManager
+            isNfc = nfcManager?.defaultAdapter?.isEnabled == true
+        } catch (_: Exception) {}
+
         return mapOf(
             "wifi" to mapOf(
                 "enabled" to isWifiEnabled,
@@ -202,6 +215,10 @@ object HardwareState {
             "airplane" to isAirplane,
             "location" to isLocation,
             "batterySaver" to isBatterySaver,
+            "nightLight" to isNightLight,
+            "extraDim" to isExtraDim,
+            "dataSaver" to isDataSaver,
+            "nfc" to isNfc,
             "battery" to mapOf(
                 "level" to batteryLevel,
                 "isCharging" to isCharging

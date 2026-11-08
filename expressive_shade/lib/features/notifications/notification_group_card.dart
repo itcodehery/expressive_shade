@@ -203,14 +203,15 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
       ),
     );
 
-    if (!_isExpanded) {
+    final bool canDismissGroup = widget.notifications.any((n) => n.isClearable);
+    if (!_isExpanded && canDismissGroup) {
       return SpringyDismissibleNotification(
         key: Key('group_dismiss_${primaryNotif.packageName}_${primaryNotif.groupKey}'),
         colors: colors,
         borderRadius: BorderRadius.circular(24),
         margin: const EdgeInsets.only(bottom: 10),
         onDismissed: () {
-          for (final n in widget.notifications) {
+          for (final n in widget.notifications.where((n) => n.isClearable)) {
             widget.onDismiss(n.id);
           }
         },

@@ -4,13 +4,17 @@ import '../models/notification_model.dart';
 
 class SystemNotificationService {
   static const MethodChannel _channel = MethodChannel('com.expressive_shade/notifications');
-  static VoidCallback? _onNotificationsChanged;
+  static final Set<VoidCallback> _listeners = {};
 
   static void initialize(VoidCallback onUpdate) {
-    _onNotificationsChanged = onUpdate;
+    _listeners.add(onUpdate);
     _channel.setMethodCallHandler((call) async {
       if (call.method == 'onNotificationsChanged') {
-        _onNotificationsChanged?.call();
+        for (final listener in Set<VoidCallback>.from(_listeners)) {
+          try {
+            listener();
+          } catch (_) {}
+        }
       }
     });
   }
@@ -81,6 +85,7 @@ class SystemNotificationService {
           actions: actions,
           canOpen: map['canOpen'] == true,
           isOngoing: map['isOngoing'] == true,
+          isClearable: map['isClearable'] == true || (map['isClearable'] == null && map['isOngoing'] != true),
           isConversation: _isMessagingApp(packageName),
           isGroupSummary: map['isGroupSummary'] == true,
           groupKey: map['groupKey']?.toString(),

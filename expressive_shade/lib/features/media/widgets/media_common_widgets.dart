@@ -121,7 +121,7 @@ class _PlayPauseSpringButtonState extends State<PlayPauseSpringButton>
     _scaleAnimation = Tween<double>(begin: 1.0, end: 0.90).animate(
       CurvedAnimation(
         parent: _springController,
-        curve: Curves.easeInQuad,
+        curve: Curves.easeOutQuad,
         reverseCurve: Curves.easeOutBack,
       ),
     );
@@ -437,24 +437,26 @@ class _ExpressiveWaveformSeekerState extends State<ExpressiveWaveformSeeker>
             widget.onChanged(val);
             HapticFeedback.lightImpact();
           },
-          child: AnimatedBuilder(
-            animation: _anim,
-            builder: (context, _) {
-              return SizedBox(
-                height: 24,
-                child: CustomPaint(
-                  size: Size(constraints.maxWidth, 24),
-                  painter: SquigglyWavePainter(
-                    progress: currentVal,
-                    wavePhase: _anim.value * 2 * math.pi,
-                    isPlaying: widget.isPlaying,
-                    activeColor: widget.activeColor,
-                    inactiveColor: widget.inactiveColor,
-                    thumbColor: widget.thumbColor,
+          child: RepaintBoundary(
+            child: AnimatedBuilder(
+              animation: _anim,
+              builder: (context, _) {
+                return SizedBox(
+                  height: 24,
+                  child: CustomPaint(
+                    size: Size(constraints.maxWidth, 24),
+                    painter: SquigglyWavePainter(
+                      progress: currentVal,
+                      wavePhase: _anim.value * 2 * math.pi,
+                      isPlaying: widget.isPlaying,
+                      activeColor: widget.activeColor,
+                      inactiveColor: widget.inactiveColor,
+                      thumbColor: widget.thumbColor,
+                    ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         );
       },

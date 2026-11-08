@@ -40,6 +40,38 @@ class ShadeOverlayActivity : FlutterActivity() {
             window.attributes = lp
         }
 
+        // Enable high refresh rate (90Hz / 120Hz / 144Hz) to avoid Android 60Hz lock on transparent windows
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val d = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    display
+                } else {
+                    @Suppress("DEPRECATION")
+                    windowManager.defaultDisplay
+                }
+                d?.let { disp ->
+                    val modes = disp.supportedModes
+                    var maxMode = disp.mode
+                    var maxRate = maxMode.refreshRate
+                    for (m in modes) {
+                        if (m.refreshRate > maxRate) {
+                            maxRate = m.refreshRate
+                            maxMode = m
+                        }
+                    }
+                    val lp = window.attributes
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        lp.preferredMaxDisplayRefreshRate = maxRate
+                        lp.preferredMinDisplayRefreshRate = maxRate
+                    }
+                    if (maxRate > 60f) {
+                        lp.preferredDisplayModeId = maxMode.modeId
+                    }
+                    window.attributes = lp
+                }
+            } catch (_: Exception) {}
+        }
+
         window.addFlags(
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or

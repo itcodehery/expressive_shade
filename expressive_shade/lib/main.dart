@@ -33,19 +33,21 @@ class ExpressiveShadeApp extends StatelessWidget {
       ],
       child: ChangeNotifierProvider(
         create: (_) => ShadeStateProvider(),
-        child: Consumer<ShadeStateProvider>(
-          builder: (context, state, _) {
+        child: Selector<ShadeStateProvider, ThemeData>(
+          selector: (_, state) {
             final themeColors = ExpressiveThemeColors.fromSettings(
               source: state.themeSource,
               preset: state.selectedPreset,
               custom: state.customTheme,
               systemMonetColor: state.systemMonetColor,
             );
-
+            return themeColors.toThemeData(state.selectedFont);
+          },
+          builder: (context, themeData, _) {
             return MaterialApp(
               title: 'ExpressiveShade',
               debugShowCheckedModeBanner: false,
-              theme: themeColors.toThemeData(state.selectedFont),
+              theme: themeData,
               onGenerateRoute: (settings) {
                 final uri = Uri.parse(settings.name ?? '/');
                 if (uri.path == '/overlay') {

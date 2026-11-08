@@ -31,6 +31,7 @@ object ExpressiveNativeBridge {
     private const val NOTIFICATIONS_CHANNEL = "com.expressive_shade/notifications"
     private const val MEDIA_CHANNEL = "com.expressive_shade/media"
     private const val SETTINGS_CHANNEL = "com.expressive_shade/settings"
+    private const val APPS_CHANNEL = "com.expressive_shade/apps"
 
     // Coalesce bursts of notification events into a single refresh.
     private const val NOTIFICATION_REFRESH_DEBOUNCE_MS = 150L
@@ -129,7 +130,7 @@ object ExpressiveNativeBridge {
         )
         activeNotificationsChannels.add(
             MethodChannel(messenger, NOTIFICATIONS_CHANNEL).apply {
-                setMethodCallHandler(NotificationsChannelHandler())
+                setMethodCallHandler(NotificationsChannelHandler(context))
             }
         )
         activeMediaChannels.add(
@@ -140,6 +141,9 @@ object ExpressiveNativeBridge {
                 setMethodCallHandler(SettingsChannelHandler(context) { changed -> broadcastSettings(changed) })
             }
         )
+        MethodChannel(messenger, APPS_CHANNEL).apply {
+            setMethodCallHandler(AppsChannelHandler(context))
+        }
 
         // Connect listener callbacks
         ExpressiveNotificationListenerService.onNotificationsChangedListener = {
