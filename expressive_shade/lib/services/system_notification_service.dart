@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/notification_model.dart';
+import 'smart_notification_classifier.dart';
 
 class SystemNotificationService {
   static const MethodChannel _channel = MethodChannel('com.expressive_shade/notifications');
@@ -71,12 +72,30 @@ class SystemNotificationService {
         final Uint8List? appIconBytes = _iconCache[packageName];
 
         final iconAndColor = _resolveAppVisuals(packageName, appName);
+        final channelId = map['channelId']?.toString() ?? '';
+        final androidCategory = map['androidCategory']?.toString() ?? '';
+        final isMessagingStyle = map['isMessagingStyle'] == true;
+        final isConversation = isMessagingStyle || _isMessagingApp(packageName);
+        final hasReplyAction = actions.any((a) => a.hasRemoteInput);
+        final resolvedTitle = title.isNotEmpty ? title : appName;
+
+        final classification = SmartNotificationClassifier.classify(
+          appName: appName,
+          packageName: packageName,
+          title: resolvedTitle,
+          content: content,
+          channelId: channelId,
+          androidCategory: androidCategory,
+          isConversation: isConversation,
+          isMessagingStyle: isMessagingStyle,
+          hasReplyAction: hasReplyAction,
+        );
 
         return NotificationModel(
           id: id,
           appName: appName,
           packageName: packageName,
-          title: title.isNotEmpty ? title : appName,
+          title: resolvedTitle,
           content: content,
           timeAgo: timeAgo,
           appIcon: iconAndColor.icon,
@@ -86,9 +105,15 @@ class SystemNotificationService {
           canOpen: map['canOpen'] == true,
           isOngoing: map['isOngoing'] == true,
           isClearable: map['isClearable'] == true || (map['isClearable'] == null && map['isOngoing'] != true),
-          isConversation: _isMessagingApp(packageName),
+          isConversation: isConversation,
           isGroupSummary: map['isGroupSummary'] == true,
           groupKey: map['groupKey']?.toString(),
+          channelId: channelId,
+          androidCategory: androidCategory,
+          category: classification.category,
+          categoryConfidence: classification.confidence,
+          extractedOtp: classification.extractedOtp,
+          isUserCategoryOverride: classification.isUserOverride,
         );
       }).toList();
     } catch (_) {

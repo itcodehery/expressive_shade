@@ -31,12 +31,14 @@ class NotificationChannelSettingsCard extends StatefulWidget {
 class _NotificationChannelSettingsCardState
     extends State<NotificationChannelSettingsCard> {
   late bool _isSilent;
+  late NotificationCategory _selectedCategory;
 
   @override
   void initState() {
     super.initState();
     final state = context.read<ShadeStateProvider>();
     _isSilent = state.isNotificationSilent(widget.notification);
+    _selectedCategory = widget.notification.category;
   }
 
   @override
@@ -217,6 +219,81 @@ class _NotificationChannelSettingsCardState
               setState(() => _isSilent = true);
               state.setNotificationSilent(notif, true);
             },
+          ),
+          const SizedBox(height: 12),
+
+          // Smart Category Override Selector
+          Text(
+            'Smart Category',
+            style: font.textStyleBuilder(
+              fontSize: 12.0,
+              fontWeight: FontWeight.w600,
+              color: colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                for (final cat in [
+                  NotificationCategory.urgent,
+                  NotificationCategory.people,
+                  NotificationCategory.updates,
+                  NotificationCategory.social,
+                  NotificationCategory.promotions,
+                ])
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        setState(() => _selectedCategory = cat);
+                        state.setNotificationCategoryOverride(notif, cat);
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 160),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 11,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: _selectedCategory == cat
+                              ? colors.activePill
+                              : colors.background.withValues(alpha: 0.45),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              cat.icon,
+                              size: 13,
+                              color: _selectedCategory == cat
+                                  ? colors.onActivePill
+                                  : colors.textSecondary,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              cat.displayName,
+                              style: font.textStyleBuilder(
+                                fontSize: 11.5,
+                                fontWeight: _selectedCategory == cat
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: _selectedCategory == cat
+                                    ? colors.onActivePill
+                                    : colors.textPrimary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
 

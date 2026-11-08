@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:expressive_shade/features/notifications/notification_card.dart';
+import 'package:expressive_shade/features/notifications/notification_list.dart';
 import 'package:expressive_shade/models/font_config.dart';
 import 'package:expressive_shade/models/notification_model.dart';
 import 'package:expressive_shade/models/notification_style.dart';
 import 'package:expressive_shade/models/shade_theme.dart';
+import 'package:expressive_shade/services/smart_notification_classifier.dart';
 import 'package:expressive_shade/theme/m3_expressive_theme.dart';
 
 void main() {
@@ -201,6 +203,220 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(dismissed, isFalse);
+    });
+
+    testWidgets('Smart OTP extraction renders 1-tap Copy OTP pill on NotificationCard', (tester) async {
+      final otpRes = SmartNotificationClassifier.classify(
+        appName: 'Messages',
+        packageName: 'com.google.android.apps.messaging',
+        title: 'Google Verification',
+        content: 'Your verification code is 482910. Do not share this OTP.',
+      );
+
+      expect(otpRes.category, NotificationCategory.urgent);
+      expect(otpRes.extractedOtp, '482910');
+
+      final otpNotif = sampleNotif.copyWith(
+        title: 'Google Verification',
+        content: 'Your verification code is 482910. Do not share this OTP.',
+        category: otpRes.category,
+        extractedOtp: otpRes.extractedOtp,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NotificationCard(
+              notification: otpNotif,
+              colors: colors,
+              font: font,
+              style: NotificationStyle.android17,
+              onDismiss: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Copy 482910'), findsOneWidget);
+    });
+
+    test('Tier 1 & Tier 2 SmartNotificationClassifier categorizes accurately and respects user overrides', () {
+      // 1. Direct message -> People
+      final chatRes = SmartNotificationClassifier.classify(
+        appName: 'WhatsApp',
+        packageName: 'com.whatsapp',
+        title: 'Matt',
+        content: 'Hey! Are we still down for meeting up on Saturday?',
+        isConversation: true,
+        hasReplyAction: true,
+      );
+      expect(chatRes.category, NotificationCategory.people);
+
+      // 2. Order delivery -> Updates
+      final orderRes = SmartNotificationClassifier.classify(
+        appName: 'Amazon',
+        packageName: 'com.amazon.mShop.android.shopping',
+        title: 'Out for delivery',
+        content: 'Your package #402-119 is arriving today by 5 PM.',
+        channelId: 'order_updates',
+      );
+      expect(orderRes.category, NotificationCategory.updates);
+
+      // 3. Marketing promo -> Promotions
+      final promoRes = SmartNotificationClassifier.classify(
+        appName: 'Swiggy',
+        packageName: 'in.swiggy.android',
+        title: 'Flash Sale: 60% OFF!',
+        content: 'Use promo code TREAT60 for free delivery on your next order.',
+      );
+      expect(promoRes.category, NotificationCategory.promotions);
+
+      // 4. Social activity -> Social (even when comment has a question mark and reply action!)
+      final socialRes = SmartNotificationClassifier.classify(
+        appName: 'Instagram',
+        packageName: 'com.instagram.android',
+        title: 'Instagram',
+        content: 'dev_sharma commented on your photo: "Clean setup! What monitor is that?"',
+        hasReplyAction: true,
+      );
+      expect(socialRes.category, NotificationCategory.social);
+
+      // 4b. Instagram 1-on-1 Direct Message -> People
+      final instaDmRes = SmartNotificationClassifier.classify(
+        appName: 'Instagram',
+        packageName: 'com.instagram.android',
+        title: 'tanya_kapoor',
+        content: 'Haha no way! Tell me everything when we meet tomorrow',
+        isConversation: true,
+        hasReplyAction: true,
+      );
+      expect(instaDmRes.category, NotificationCategory.people);
+
+      // 4c. Bank UPI debit inside SMS app (even with isConversation: true & hasReplyAction: true) -> Updates
+      final bankSmsRes = SmartNotificationClassifier.classify(
+        appName: 'Messages',
+        packageName: 'com.google.android.apps.messaging',
+        title: 'AD-HDFCBK-S',
+        content: 'Sent Rs.350.00 from HDFC Bank A/c *4421 to Zomato via UPI Ref 6312894012.',
+        isConversation: true,
+        hasReplyAction: true,
+      );
+      expect(bankSmsRes.category, NotificationCategory.updates);
+
+      // 4d. Courier AWB tracking inside SMS app -> Updates
+      final courierSmsRes = SmartNotificationClassifier.classify(
+        appName: 'Messages',
+        packageName: 'com.google.android.apps.messaging',
+        title: 'AD-DELHVY-S',
+        content: 'Delhivery Shipment AWB 8819203124 from Nykaa is out for delivery with agent Ramesh.',
+        isConversation: true,
+        hasReplyAction: true,
+      );
+      expect(courierSmsRes.category, NotificationCategory.updates);
+
+      // 4e. Brand marketing inside WhatsApp Business (with "expires at midnight" & "promo code") -> Promotions
+      final waPromoRes = SmartNotificationClassifier.classify(
+        appName: 'WhatsApp',
+        packageName: 'com.whatsapp',
+        title: 'Lenskart',
+        content: 'Hey! Your ₹500 discount voucher expires at midnight. Use promo code EYE500 to shop now.',
+        isConversation: true,
+        hasReplyAction: true,
+      );
+      expect(waPromoRes.category, NotificationCategory.promotions);
+
+      // 4f. Zomato discount on dinner order -> Promotions (not Updates!)
+      final zomatoPromoRes = SmartNotificationClassifier.classify(
+        appName: 'Zomato',
+        packageName: 'com.application.zomato',
+        title: 'Get ₹150 OFF on your dinner order!',
+        content: 'Flash sale is live for the next 2 hours. Order now before the deal expires!',
+      );
+      expect(zomatoPromoRes.category, NotificationCategory.promotions);
+
+      // 4g. YouTube Premium trial -> Promotions (not Social!)
+      final ytPromoRes = SmartNotificationClassifier.classify(
+        appName: 'YouTube',
+        packageName: 'com.google.android.youtube',
+        title: 'Try YouTube Premium Free for 1 Month',
+        content: 'Watch ad-free videos offline and get YouTube Music Premium. Start free trial.',
+      );
+      expect(ytPromoRes.category, NotificationCategory.promotions);
+
+      // 5. User Override takes precedence
+      SmartNotificationClassifier.setUserOverride(
+        packageName: 'in.swiggy.android',
+        channelId: 'promo_channel',
+        category: NotificationCategory.updates,
+      );
+      final overridden = SmartNotificationClassifier.classify(
+        appName: 'Swiggy',
+        packageName: 'in.swiggy.android',
+        channelId: 'promo_channel',
+        title: 'Flash Sale: 60% OFF!',
+        content: 'Use promo code TREAT60.',
+      );
+      expect(overridden.category, NotificationCategory.updates);
+      expect(overridden.isUserOverride, isTrue);
+
+      SmartNotificationClassifier.loadOverrides({});
+    });
+
+    testWidgets('NotificationList renders category filter chips and bundles low-priority promos', (tester) async {
+      final list = [
+        sampleNotif,
+        const NotificationModel(
+          id: 'promo_1',
+          packageName: 'com.shop.one',
+          appName: 'ShopOne',
+          title: '50% OFF Flash Sale',
+          content: 'Use coupon SAVE50 to shop now!',
+          timeAgo: '2m',
+          appIcon: Icons.local_offer_rounded,
+          appColor: Colors.orange,
+        ),
+        const NotificationModel(
+          id: 'promo_2',
+          packageName: 'com.shop.two',
+          appName: 'ShopTwo',
+          title: 'Limited time offer: Free shipping',
+          content: 'Claim your reward and discount today.',
+          timeAgo: '5m',
+          appIcon: Icons.local_offer_rounded,
+          appColor: Colors.deepOrange,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: NotificationList(
+                notifications: list,
+                colors: colors,
+                font: font,
+                onDismiss: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Category filter chips visible
+      expect(find.text('All 3'), findsOneWidget);
+      expect(find.text('People 1'), findsOneWidget);
+      expect(find.text('Promotions 2'), findsOneWidget);
+
+      // High-priority message is visible at top, while the 2 promos are bundled into the digest card
+      expect(find.text('Alice Chen'), findsOneWidget);
+      expect(find.text('Promotions'), findsOneWidget);
+      expect(find.text('50% OFF Flash Sale'), findsNothing);
+
+      // Tap the Promotions bundle card to expand it
+      await tester.tap(find.text('Promotions'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('50% OFF Flash Sale'), findsOneWidget);
     });
   });
 }

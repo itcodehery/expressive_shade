@@ -16,6 +16,7 @@ import '../services/system_monet_service.dart';
 import '../services/system_notification_service.dart';
 import '../services/system_permissions_service.dart';
 import '../services/system_settings_service.dart';
+import '../services/smart_notification_classifier.dart';
 
 class ShadeStateProvider extends ChangeNotifier {
   static const MethodChannel _overlayEventsChannel = MethodChannel(
@@ -205,6 +206,16 @@ class ShadeStateProvider extends ChangeNotifier {
         } catch (_) {}
       }
     }
+    if (s['notificationCategoryOverrides'] != null) {
+      try {
+        final dynamic raw = s['notificationCategoryOverrides'];
+        final Map<String, dynamic> map = (raw is String)
+            ? Map<String, dynamic>.from(jsonDecode(raw) as Map)
+            : Map<String, dynamic>.from(raw as Map);
+        SmartNotificationClassifier.loadOverrides(map);
+        _reclassifyExistingNotifications();
+      } catch (_) {}
+    }
     notifyListeners();
   }
 
@@ -309,6 +320,11 @@ class ShadeStateProvider extends ChangeNotifier {
           _tilesByMode[mode]!.map((t) => t.toJson()).toList(),
         );
       }
+    }
+    if (dirty.contains('notificationCategoryOverrides')) {
+      map['notificationCategoryOverrides'] = jsonEncode(
+        SmartNotificationClassifier.exportOverrides(),
+      );
     }
     SystemSettingsService.saveSettings(map);
   }
@@ -1206,6 +1222,45 @@ class ShadeStateProvider extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  void setNotificationCategoryOverride(
+    NotificationModel notif,
+    NotificationCategory category,
+  ) {
+    final pkg =
+        notif.packageName.isNotEmpty ? notif.packageName : notif.appName;
+    SmartNotificationClassifier.setUserOverride(
+      packageName: pkg,
+      channelId: notif.channelId,
+      category: category,
+    );
+    _reclassifyExistingNotifications();
+    _scheduleSave({'notificationCategoryOverrides'});
+    notifyListeners();
+  }
+
+  void _reclassifyExistingNotifications() {
+    if (_notifications.isEmpty) return;
+    _notifications = _notifications.map((n) {
+      final pkg = n.packageName.isNotEmpty ? n.packageName : n.appName;
+      final res = SmartNotificationClassifier.classify(
+        appName: n.appName,
+        packageName: pkg,
+        title: n.title,
+        content: n.content,
+        channelId: n.channelId,
+        androidCategory: n.androidCategory,
+        isConversation: n.isConversation,
+        hasReplyAction: n.actions.any((a) => a.hasRemoteInput),
+      );
+      return n.copyWith(
+        category: res.category,
+        categoryConfidence: res.confidence,
+        extractedOtp: res.extractedOtp,
+        isUserCategoryOverride: res.isUserOverride,
+      );
+    }).toList();
   }
 
   // Ringer Mode for NothingOS 5 3-dot pill (0: Silent, 1: Vibrate, 2: Ring)

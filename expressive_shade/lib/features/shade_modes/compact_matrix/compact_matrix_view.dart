@@ -5,6 +5,7 @@ import '../../../../models/notification_model.dart';
 import '../../../../models/notification_style.dart';
 import '../../../../models/qs_tile_model.dart';
 import '../../../../models/slider_style.dart';
+import '../../../../services/smart_notification_classifier.dart';
 import '../../../../theme/m3_expressive_theme.dart';
 import '../../../../widgets/expressive_pill.dart';
 import '../../../../widgets/expressive_slider.dart';
@@ -329,45 +330,60 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
       );
     }
 
-    final important = <NotificationModel>[];
-    final other = <NotificationModel>[];
+    final priorityList = <NotificationModel>[];
+    final updatesList = <NotificationModel>[];
+    final lowPriorityList = <NotificationModel>[];
 
-    for (final notif in widget.notifications) {
-      if (notif.isGroupSummary) continue;
-      if (_isImportant(notif)) {
-        important.add(notif);
-      } else {
-        other.add(notif);
+    for (final rawNotif in widget.notifications) {
+      if (rawNotif.isGroupSummary) continue;
+      final notif = _resolveClassified(rawNotif);
+      switch (notif.category) {
+        case NotificationCategory.urgent:
+        case NotificationCategory.people:
+          priorityList.add(notif);
+        case NotificationCategory.updates:
+        case NotificationCategory.other:
+          updatesList.add(notif);
+        case NotificationCategory.social:
+        case NotificationCategory.promotions:
+          lowPriorityList.add(notif);
       }
-    }
-
-    if (important.isEmpty && other.isNotEmpty) {
-      important.addAll(other.take((other.length / 2).ceil()));
-      other.removeRange(0, important.length);
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (important.isNotEmpty) ...[
-          _buildSectionHeader('Important'),
+        if (priorityList.isNotEmpty) ...[
+          _buildSectionHeader('Priority & People'),
           const SizedBox(height: 8),
-          for (int i = 0; i < important.length; i++)
+          for (int i = 0; i < priorityList.length; i++)
             _buildSmartNotifCard(
-              important[i],
+              priorityList[i],
               isFirst: i == 0,
-              isLast: i == important.length - 1,
+              isLast: i == priorityList.length - 1,
             ),
-          const SizedBox(height: 16),
+          if (updatesList.isNotEmpty || lowPriorityList.isNotEmpty)
+            const SizedBox(height: 16),
         ],
-        if (other.isNotEmpty) ...[
-          _buildSectionHeader('Other'),
+        if (updatesList.isNotEmpty) ...[
+          _buildSectionHeader('Updates'),
           const SizedBox(height: 8),
-          for (int i = 0; i < other.length; i++)
+          for (int i = 0; i < updatesList.length; i++)
             _buildSmartNotifCard(
-              other[i],
+              updatesList[i],
               isFirst: i == 0,
-              isLast: i == other.length - 1,
+              isLast: i == updatesList.length - 1,
+            ),
+          if (lowPriorityList.isNotEmpty) const SizedBox(height: 16),
+        ],
+        if (lowPriorityList.isNotEmpty) ...[
+          _buildSectionHeader('Promotions & Social'),
+          const SizedBox(height: 8),
+          for (int i = 0; i < lowPriorityList.length; i++)
+            _buildSmartNotifCard(
+              lowPriorityList[i],
+              isFirst: i == 0,
+              isLast: i == lowPriorityList.length - 1,
             ),
         ],
         _buildActionButtonsRow(),
@@ -650,17 +666,27 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
     );
   }
 
-  bool _isImportant(NotificationModel notif) {
-    final combined = '${notif.appName} ${notif.title} ${notif.content}'.toLowerCase();
-    if (notif.isOngoing) return true;
-    return combined.contains('missed call') ||
-        combined.contains('call') ||
-        combined.contains('otp') ||
-        combined.contains('bank') ||
-        combined.contains('code') ||
-        combined.contains('license') ||
-        combined.contains('urgent') ||
-        combined.contains('security');
+  NotificationModel _resolveClassified(NotificationModel n) {
+    if (n.isUserCategoryOverride) {
+      return n;
+    }
+    final pkg = n.packageName.isNotEmpty ? n.packageName : n.appName;
+    final res = SmartNotificationClassifier.classify(
+      appName: n.appName,
+      packageName: pkg,
+      title: n.title,
+      content: n.content,
+      channelId: n.channelId,
+      androidCategory: n.androidCategory,
+      isConversation: n.isConversation,
+      hasReplyAction: n.actions.any((a) => a.hasRemoteInput),
+    );
+    return n.copyWith(
+      category: res.category,
+      categoryConfidence: res.confidence,
+      extractedOtp: res.extractedOtp ?? n.extractedOtp,
+      isUserCategoryOverride: res.isUserOverride,
+    );
   }
 
   Widget _buildActionButtonsRow() {

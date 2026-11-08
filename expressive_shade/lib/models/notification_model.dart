@@ -1,6 +1,95 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
+/// Smart AI/Heuristic categorization buckets for notifications.
+enum NotificationCategory {
+  urgent,
+  people,
+  updates,
+  social,
+  promotions,
+  other,
+}
+
+extension NotificationCategoryX on NotificationCategory {
+  String get displayName {
+    switch (this) {
+      case NotificationCategory.urgent:
+        return 'Priority';
+      case NotificationCategory.people:
+        return 'People';
+      case NotificationCategory.updates:
+        return 'Updates';
+      case NotificationCategory.social:
+        return 'Social';
+      case NotificationCategory.promotions:
+        return 'Promotions';
+      case NotificationCategory.other:
+        return 'Other';
+    }
+  }
+
+  String get shortLabel {
+    switch (this) {
+      case NotificationCategory.urgent:
+        return 'Urgent';
+      case NotificationCategory.people:
+        return 'Chat';
+      case NotificationCategory.updates:
+        return 'Update';
+      case NotificationCategory.social:
+        return 'Social';
+      case NotificationCategory.promotions:
+        return 'Promo';
+      case NotificationCategory.other:
+        return 'General';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case NotificationCategory.urgent:
+        return Icons.bolt_rounded;
+      case NotificationCategory.people:
+        return Icons.forum_rounded;
+      case NotificationCategory.updates:
+        return Icons.local_shipping_rounded;
+      case NotificationCategory.social:
+        return Icons.group_rounded;
+      case NotificationCategory.promotions:
+        return Icons.local_offer_rounded;
+      case NotificationCategory.other:
+        return Icons.notifications_rounded;
+    }
+  }
+
+  /// Lower number = higher priority in the notification shade.
+  int get priorityRank {
+    switch (this) {
+      case NotificationCategory.urgent:
+        return 0;
+      case NotificationCategory.people:
+        return 1;
+      case NotificationCategory.updates:
+        return 2;
+      case NotificationCategory.other:
+        return 3;
+      case NotificationCategory.social:
+        return 4;
+      case NotificationCategory.promotions:
+        return 5;
+    }
+  }
+
+  bool get isHighPriority =>
+      this == NotificationCategory.urgent ||
+      this == NotificationCategory.people;
+
+  bool get isLowPriorityBundleable =>
+      this == NotificationCategory.promotions ||
+      this == NotificationCategory.social;
+}
+
 /// A single actionable button exposed by a notification.
 class NotificationAction {
   /// Position of the action in the original notification (used to trigger it natively).
@@ -35,6 +124,12 @@ class NotificationModel {
   final String? senderAvatar;
   final bool isGroupSummary;
   final String? groupKey;
+  final String channelId;
+  final String androidCategory;
+  final NotificationCategory category;
+  final double categoryConfidence;
+  final String? extractedOtp;
+  final bool isUserCategoryOverride;
 
   const NotificationModel({
     required this.id,
@@ -54,6 +149,12 @@ class NotificationModel {
     this.senderAvatar,
     this.isGroupSummary = false,
     this.groupKey,
+    this.channelId = '',
+    this.androidCategory = '',
+    this.category = NotificationCategory.other,
+    this.categoryConfidence = 0.5,
+    this.extractedOtp,
+    this.isUserCategoryOverride = false,
   });
 
   NotificationModel copyWith({
@@ -74,6 +175,12 @@ class NotificationModel {
     String? senderAvatar,
     bool? isGroupSummary,
     String? groupKey,
+    String? channelId,
+    String? androidCategory,
+    NotificationCategory? category,
+    double? categoryConfidence,
+    String? extractedOtp,
+    bool? isUserCategoryOverride,
   }) {
     return NotificationModel(
       id: id ?? this.id,
@@ -93,6 +200,13 @@ class NotificationModel {
       senderAvatar: senderAvatar ?? this.senderAvatar,
       isGroupSummary: isGroupSummary ?? this.isGroupSummary,
       groupKey: groupKey ?? this.groupKey,
+      channelId: channelId ?? this.channelId,
+      androidCategory: androidCategory ?? this.androidCategory,
+      category: category ?? this.category,
+      categoryConfidence: categoryConfidence ?? this.categoryConfidence,
+      extractedOtp: extractedOtp ?? this.extractedOtp,
+      isUserCategoryOverride:
+          isUserCategoryOverride ?? this.isUserCategoryOverride,
     );
   }
 
@@ -105,6 +219,9 @@ class NotificationModel {
       isOngoing == other.isOngoing &&
       isClearable == other.isClearable &&
       isGroupSummary == other.isGroupSummary &&
+      category == other.category &&
+      extractedOtp == other.extractedOtp &&
+      isUserCategoryOverride == other.isUserCategoryOverride &&
       appIconBytes == other.appIconBytes &&
       actions.length == other.actions.length;
 }

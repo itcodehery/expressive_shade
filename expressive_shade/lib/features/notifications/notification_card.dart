@@ -45,6 +45,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
   // Collapsed by default across all styles (not showing actions until expanded or swiped)
   bool _isExpanded = false;
   bool _isShowingSettings = false;
+  bool _otpCopied = false;
   NotificationAction? _replyingTo;
   final TextEditingController _replyController = TextEditingController();
 
@@ -270,6 +271,13 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                 NotificationStyle.hyperOS => _buildHyperOsContent(notification, colors, font),
                 NotificationStyle.compact => const SizedBox.shrink(),
               },
+
+              // Smart One-Tap OTP Copy Pill (always visible when an OTP is detected)
+              if (notification.extractedOtp != null &&
+                  notification.extractedOtp!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _buildOtpCopyPill(notification.extractedOtp!, colors, font),
+              ],
 
               // Inline Action Buttons (Collapsed by default, revealed when expanded)
               if (_isExpanded && (notification.actions.isNotEmpty || widget.onSnooze != null)) ...[
@@ -713,6 +721,10 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
               maxLines: 1,
             ),
             const Spacer(),
+            if (notification.category != NotificationCategory.other) ...[
+              _buildCategoryBadge(notification.category, colors, font),
+              const SizedBox(width: 6),
+            ],
             if (widget.groupCount > 1 && widget.isFirstInGroup) ...[
               _buildGroupBadge(colors, font),
               const SizedBox(width: 6),
@@ -1003,6 +1015,55 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     );
   }
 
+  Widget _buildOtpCopyPill(
+    String otp,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          HapticFeedback.mediumImpact();
+          Clipboard.setData(ClipboardData(text: otp));
+          setState(() => _otpCopied = true);
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              setState(() => _otpCopied = false);
+            }
+          });
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: colors.activePill.withValues(alpha: 0.16),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _otpCopied ? Icons.check_rounded : Icons.content_copy_rounded,
+                size: 14,
+                color: colors.activePill,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _otpCopied ? 'Copied $otp' : 'Copy $otp',
+                style: font.textStyleBuilder(
+                  fontSize: 12.0,
+                  fontWeight: FontWeight.w700,
+                  color: colors.activePill,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // --- Actions Row for Expanded Notifications ---
   Widget _buildActionsRow(NotificationModel notification, ExpressiveThemeColors colors, FontConfig font) {
     return Wrap(
@@ -1156,6 +1217,52 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
           : Center(
               child: Icon(notification.appIcon, size: size * 0.55, color: notification.appColor),
             ),
+    );
+  }
+
+  Widget _buildCategoryBadge(
+    NotificationCategory category,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    final bool isUrgent = category == NotificationCategory.urgent;
+    final bgColor = isUrgent
+        ? colors.activePill.withValues(alpha: 0.20)
+        : (colors.isDark
+            ? Colors.white.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.05));
+    final fgColor = isUrgent
+        ? colors.activePill
+        : colors.textSecondary.withValues(alpha: 0.85);
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        setState(() => _isShowingSettings = true);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(category.icon, size: 10.5, color: fgColor),
+            const SizedBox(width: 3.5),
+            Text(
+              category.shortLabel,
+              style: font.textStyleBuilder(
+                fontSize: 10.0,
+                fontWeight: FontWeight.w700,
+                color: fgColor,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

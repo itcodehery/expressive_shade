@@ -123,7 +123,9 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 }
 
                 val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
-                val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                val rawText = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                val text = if (!bigText.isNullOrBlank()) bigText else rawText
                 if (title.isNullOrBlank() && text.isNullOrBlank()) continue
 
                 // 2. Filter out Android system notifications about ExpressiveShade overlaying/displaying over other apps
@@ -156,6 +158,15 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                 }
 
                 val timestamp = timeFormat.format(Date(sbn.postTime))
+                val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    notification.channelId ?: ""
+                } else {
+                    ""
+                }
+                val androidCategory = notification.category ?: ""
+                val isMessagingStyle = template.contains("MessagingStyle", ignoreCase = true) ||
+                        extras.containsKey(Notification.EXTRA_MESSAGES) ||
+                        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !notification.shortcutId.isNullOrEmpty())
 
                 val itemMap = mutableMapOf<String, Any>(
                     "id" to sbn.key,
@@ -169,7 +180,10 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                     "actions" to actions,
                     "canOpen" to (notification.contentIntent != null),
                     "isGroupSummary" to ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0),
-                    "groupKey" to (sbn.groupKey ?: "")
+                    "groupKey" to (sbn.groupKey ?: ""),
+                    "channelId" to channelId,
+                    "androidCategory" to androidCategory,
+                    "isMessagingStyle" to isMessagingStyle
                 )
                 list.add(itemMap)
             }
