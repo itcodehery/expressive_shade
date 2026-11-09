@@ -1,0 +1,17 @@
+{
+  "labels": ["Realtime", "Security", "Conversations", "Socials", "Updates", "Promotions", "Silent"],
+  "threshold": 0.6,
+  "fallback": "Updates",
+  "priority": {
+    "All": 0,
+    "Realtime": 1,
+    "Security": 1,
+    "Conversations": 2,
+    "Socials": 3,
+    "Updates": 4,
+    "Promotions": 5,
+    "Silent": 6
+  },
+  "max_len": 64,
+  "template": "{app} | {channel} | {title} | {body}"
+}

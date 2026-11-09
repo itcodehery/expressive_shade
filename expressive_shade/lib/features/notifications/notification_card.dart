@@ -250,8 +250,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
       },
       child: ClipRRect(
         borderRadius: borderRadius,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+        child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: cardBg,
@@ -259,38 +258,50 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
             border: _computeBorder(colors),
             boxShadow: _computeBoxShadow(colors),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Render Style-specific Content
-              switch (widget.style) {
-                NotificationStyle.android17 => _buildAndroid17Content(notification, colors, font),
-                NotificationStyle.ios => _buildIosContent(notification, colors, font),
-                NotificationStyle.oneui => _buildOneUiContent(notification, colors, font),
-                NotificationStyle.hyperOS => _buildHyperOsContent(notification, colors, font),
-                NotificationStyle.compact => const SizedBox.shrink(),
-              },
+          child: AnimatedSize(
+            duration: _isExpanded ? M3Motion.expandDuration : M3Motion.collapseDuration,
+            curve: _isExpanded ? M3Motion.emphasizedDecelerate : M3Motion.emphasizedAccelerate,
+            alignment: Alignment.topCenter,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Render Style-specific Content
+                switch (widget.style) {
+                  NotificationStyle.android17 => _buildAndroid17Content(notification, colors, font),
+                  NotificationStyle.ios => _buildIosContent(notification, colors, font),
+                  NotificationStyle.oneui => _buildOneUiContent(notification, colors, font),
+                  NotificationStyle.hyperOS => _buildHyperOsContent(notification, colors, font),
+                  NotificationStyle.compact => const SizedBox.shrink(),
+                },
 
-              // Smart One-Tap OTP Copy Pill (always visible when an OTP is detected)
-              if (notification.extractedOtp != null &&
-                  notification.extractedOtp!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _buildOtpCopyPill(notification.extractedOtp!, colors, font),
-              ],
+                // Smart One-Tap OTP Copy Pill (always visible when an OTP is detected)
+                if (notification.extractedOtp != null &&
+                    notification.extractedOtp!.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _buildOtpCopyPill(notification.extractedOtp!, colors, font),
+                ],
 
-              // Inline Action Buttons (Collapsed by default, revealed when expanded)
-              if (_isExpanded && (notification.actions.isNotEmpty || widget.onSnooze != null)) ...[
-                const SizedBox(height: 10),
-                _buildActionsRow(notification, colors, font),
-              ],
+                // Inline Action Buttons (Collapsed by default, smoothly revealed when expanded)
+                _buildAnimatedExpandableSection(
+                  isExpanded: _isExpanded && (notification.actions.isNotEmpty || widget.onSnooze != null),
+                  childBuilder: () => Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildActionsRow(notification, colors, font),
+                  ),
+                ),
 
-              // Inline reply field
-              if (_isExpanded && _replyingTo != null) ...[
-                const SizedBox(height: 10),
-                _buildInlineReplyField(colors, font),
+                // Inline reply field (Smoothly revealed when replying in expanded state)
+                _buildAnimatedExpandableSection(
+                  isExpanded: _isExpanded && _replyingTo != null,
+                  childBuilder: () => Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: _buildInlineReplyField(colors, font),
+                  ),
+                ),
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -312,6 +323,46 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
         widget.onDismiss();
       },
       child: cardContent,
+    );
+  }
+
+  Widget _buildExpandableText({
+    required String text,
+    required TextStyle style,
+    required int collapsedMaxLines,
+  }) {
+    return AnimatedCrossFade(
+      firstChild: Text(
+        text,
+        style: style,
+        maxLines: collapsedMaxLines,
+        overflow: TextOverflow.ellipsis,
+      ),
+      secondChild: Text(
+        text,
+        style: style,
+        overflow: TextOverflow.clip,
+      ),
+      crossFadeState: _isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+      duration: _isExpanded ? M3Motion.expandDuration : M3Motion.collapseDuration,
+      firstCurve: M3Motion.emphasizedAccelerate,
+      secondCurve: M3Motion.emphasizedDecelerate,
+      sizeCurve: _isExpanded ? M3Motion.emphasizedDecelerate : M3Motion.emphasizedAccelerate,
+    );
+  }
+
+  Widget _buildAnimatedExpandableSection({
+    required bool isExpanded,
+    required Widget Function() childBuilder,
+  }) {
+    return AnimatedCrossFade(
+      firstChild: const SizedBox(width: double.infinity, height: 0),
+      secondChild: isExpanded ? childBuilder() : const SizedBox(width: double.infinity, height: 0),
+      crossFadeState: isExpanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+      duration: isExpanded ? M3Motion.expandDuration : M3Motion.collapseDuration,
+      firstCurve: M3Motion.emphasizedAccelerate,
+      secondCurve: M3Motion.emphasizedDecelerate,
+      sizeCurve: isExpanded ? M3Motion.emphasizedDecelerate : M3Motion.emphasizedAccelerate,
     );
   }
 
@@ -363,7 +414,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     _compactSpringAnimation = Tween<double>(begin: start, end: 0.0).animate(
       CurvedAnimation(
         parent: _compactSpringController,
-        curve: Curves.easeOutCubic,
+        curve: M3Motion.emphasizedDecelerate,
       ),
     );
     _compactSpringController.reset();
@@ -399,7 +450,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     ).animate(
       CurvedAnimation(
         parent: _compactDismissController,
-        curve: const Interval(0.0, 0.45, curve: Curves.easeInCubic),
+        curve: const Interval(0.0, 0.45, curve: M3Motion.emphasizedAccelerate),
       ),
     );
 
@@ -481,7 +532,9 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                         // Middle Content or Swiped Action Tray
                         Expanded(
                           child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 200),
+                            duration: M3Motion.microDuration,
+                            switchInCurve: M3Motion.emphasizedDecelerate,
+                            switchOutCurve: M3Motion.emphasizedAccelerate,
                             child: _compactActionsRevealed
                                 ? _buildCompactActionTray(notification, colors, font)
                                 : _buildCompactRestingRow(notification, colors, font),
@@ -491,10 +544,13 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                     ),
 
                     // Inline reply field in compact mode
-                    if (_replyingTo != null) ...[
-                      const SizedBox(height: 8),
-                      _buildInlineReplyField(colors, font),
-                    ],
+                    _buildAnimatedExpandableSection(
+                      isExpanded: _replyingTo != null,
+                      childBuilder: () => Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: _buildInlineReplyField(colors, font),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -721,7 +777,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
               maxLines: 1,
             ),
             const Spacer(),
-            if (notification.category != NotificationCategory.other) ...[
+            if (notification.category != NotificationCategory.silent) ...[
               _buildCategoryBadge(notification.category, colors, font),
               const SizedBox(width: 6),
             ],
@@ -747,14 +803,13 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 3),
-            Text(
-              notification.content,
+            _buildExpandableText(
+              text: notification.content,
               style: font.textStyleBuilder(
                 fontSize: 13.0,
                 color: colors.textSecondary,
               ),
-              maxLines: _isExpanded ? null : 1,
-              overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+              collapsedMaxLines: 1,
             ),
           ],
         ),
@@ -809,14 +864,13 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
-              Text(
-                notification.content,
+              _buildExpandableText(
+                text: notification.content,
                 style: font.textStyleBuilder(
                   fontSize: 12.5,
                   color: colors.textSecondary,
                 ),
-                maxLines: _isExpanded ? null : 2,
-                overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                collapsedMaxLines: 2,
               ),
             ],
           ),
@@ -885,14 +939,13 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                 overflow: TextOverflow.ellipsis,
               ),
               const SizedBox(height: 2),
-              Text(
-                notification.content,
+              _buildExpandableText(
+                text: notification.content,
                 style: font.textStyleBuilder(
                   fontSize: 12.0,
                   color: colors.textSecondary,
                 ),
-                maxLines: _isExpanded ? null : 1,
-                overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                collapsedMaxLines: 1,
               ),
             ],
           ),
@@ -998,14 +1051,13 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  notification.content,
+                _buildExpandableText(
+                  text: notification.content,
                   style: font.textStyleBuilder(
                     fontSize: 12.5,
                     color: colors.textSecondary,
                   ),
-                  maxLines: _isExpanded ? null : 2,
-                  overflow: _isExpanded ? TextOverflow.clip : TextOverflow.ellipsis,
+                  collapsedMaxLines: 2,
                 ),
               ],
             ),
@@ -1225,7 +1277,9 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     ExpressiveThemeColors colors,
     FontConfig font,
   ) {
-    final bool isUrgent = category == NotificationCategory.urgent;
+    final bool isUrgent =
+        category == NotificationCategory.realtime ||
+        category == NotificationCategory.security;
     final bgColor = isUrgent
         ? colors.activePill.withValues(alpha: 0.20)
         : (colors.isDark
@@ -1307,8 +1361,8 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
         },
         child: isAndroid17
             ? AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                curve: Curves.easeOutCubic,
+                duration: M3Motion.microDuration,
+                curve: M3Motion.emphasized,
                 width: 28,
                 height: 19,
                 decoration: BoxDecoration(
@@ -1322,23 +1376,29 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Center(
-                  child: Icon(
-                    _isExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 15,
-                    color: colors.textPrimary.withValues(alpha: 0.85),
+                  child: AnimatedRotation(
+                    turns: _isExpanded ? 0.5 : 0.0,
+                    duration: M3Motion.microDuration,
+                    curve: M3Motion.emphasized,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 15,
+                      color: colors.textPrimary.withValues(alpha: 0.85),
+                    ),
                   ),
                 ),
               )
             : Padding(
                 padding: const EdgeInsets.all(2),
-                child: Icon(
-                  _isExpanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  size: 19,
-                  color: colors.textSecondary.withValues(alpha: 0.7),
+                child: AnimatedRotation(
+                  turns: _isExpanded ? 0.5 : 0.0,
+                  duration: M3Motion.microDuration,
+                  curve: M3Motion.emphasized,
+                  child: Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 19,
+                    color: colors.textSecondary.withValues(alpha: 0.7),
+                  ),
                 ),
               ),
       ),

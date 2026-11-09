@@ -151,9 +151,10 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
 
               // 2. Child Notifications Area
               AnimatedCrossFade(
-                duration: const Duration(milliseconds: 220),
-                firstCurve: Curves.easeOutCubic,
-                secondCurve: Curves.easeInCubic,
+                duration: _isExpanded ? M3Motion.expandDuration : M3Motion.collapseDuration,
+                firstCurve: M3Motion.emphasizedDecelerate,
+                secondCurve: M3Motion.emphasizedAccelerate,
+                sizeCurve: _isExpanded ? M3Motion.emphasizedDecelerate : M3Motion.emphasizedAccelerate,
                 crossFadeState:
                     _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
                 firstChild: Column(
@@ -306,8 +307,8 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
 
             // Expand / Collapse Pill Badge (Matches Android 17 Expressive reference tray)
             AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
+              duration: M3Motion.microDuration,
+              curve: M3Motion.emphasized,
               padding: EdgeInsets.symmetric(
                 horizontal: (_isExpanded && widget.style == NotificationStyle.android17) ? 7 : 8,
                 vertical: 2.5,
@@ -334,14 +335,17 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
                     ),
                     const SizedBox(width: 2),
                   ],
-                  Icon(
-                    _isExpanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    size: 15,
-                    color: (_isExpanded && widget.style == NotificationStyle.android17)
-                        ? colors.textPrimary.withValues(alpha: 0.85)
-                        : (colors.isDark ? colors.activePill : colors.textPrimary),
+                  AnimatedRotation(
+                    turns: _isExpanded ? 0.5 : 0.0,
+                    duration: M3Motion.microDuration,
+                    curve: M3Motion.emphasized,
+                    child: Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 15,
+                      color: (_isExpanded && widget.style == NotificationStyle.android17)
+                          ? colors.textPrimary.withValues(alpha: 0.85)
+                          : (colors.isDark ? colors.activePill : colors.textPrimary),
+                    ),
                   ),
                 ],
               ),

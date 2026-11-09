@@ -1,0 +1,16 @@
+{
+  "_comment": "'All' is a view (shows everything), not a trained class. Lower priority number = more urgent.",
+  "classes": ["Realtime", "Security", "Conversations", "Socials", "Updates", "Promotions", "Silent"],
+  "priority": {
+    "All": 0,
+    "Realtime": 1,
+    "Security": 1,
+    "Conversations": 2,
+    "Socials": 3,
+    "Updates": 4,
+    "Promotions": 5,
+    "Silent": 6
+  },
+  "confidence_threshold": 0.6,
+  "fallback_class": "Updates"
+}

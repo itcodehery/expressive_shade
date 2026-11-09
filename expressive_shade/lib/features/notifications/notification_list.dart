@@ -44,8 +44,59 @@ class NotificationList extends StatefulWidget {
 class _NotificationListState extends State<NotificationList> {
   NotificationCategory? _selectedCategory;
   bool _lowPriorityBundleExpanded = false;
+  final ScrollController _chipsScrollController = ScrollController();
+  final Map<NotificationCategory?, GlobalKey> _chipKeys = {};
+
+  @override
+  void dispose() {
+    _chipsScrollController.dispose();
+    super.dispose();
+  }
+
+  void _handleCategoryDragSelect(
+    Offset globalPos,
+    List<NotificationCategory?> categories,
+  ) {
+    for (final cat in categories) {
+      final key = _chipKeys[cat];
+      final renderBox = key?.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox != null && renderBox.hasSize) {
+        final localPos = renderBox.globalToLocal(globalPos);
+        final size = renderBox.size;
+        // Expand the touch target by an extra 10px on all sides for effortless swipe selection
+        const margin = 10.0;
+        final isHit = localPos.dx >= -margin &&
+            localPos.dx <= size.width + margin &&
+            localPos.dy >= -margin &&
+            localPos.dy <= size.height + margin;
+
+        if (isHit) {
+          if (_selectedCategory != cat) {
+            HapticFeedback.selectionClick();
+            setState(() {
+              _selectedCategory = cat;
+            });
+            // Ensure newly swiped chip stays visible in scroll view
+            final ctx = key?.currentContext;
+            if (ctx != null) {
+              Scrollable.ensureVisible(
+                ctx,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                alignment: 0.5,
+              );
+            }
+          }
+          break;
+        }
+      }
+    }
+  }
 
   List<NotificationModel> _ensureClassified(List<NotificationModel> input) {
+    if (!SmartNotificationClassifier.isEnabled) {
+      return input;
+    }
     return input.map((n) {
       if (n.isUserCategoryOverride) {
         return n;
@@ -81,6 +132,13 @@ class _NotificationListState extends State<NotificationList> {
 
     if (classified.isEmpty) {
       return _buildEmptyState(colors, font);
+    }
+
+    if (!SmartNotificationClassifier.isEnabled) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _buildGroupedCards(classified),
+      );
     }
 
     // Sort by smart priority rank (Urgent -> People -> Updates -> Other -> Social -> Promotions)
@@ -226,54 +284,80 @@ class _NotificationListState extends State<NotificationList> {
     required FontConfig font,
   }) {
     final orderedCategories = [
-      NotificationCategory.urgent,
-      NotificationCategory.people,
+      NotificationCategory.realtime,
+      NotificationCategory.security,
+      NotificationCategory.conversations,
+      NotificationCategory.socials,
       NotificationCategory.updates,
-      NotificationCategory.social,
       NotificationCategory.promotions,
-      NotificationCategory.other,
+      NotificationCategory.silent,
     ].where((c) => (counts[c] ?? 0) > 0).toList();
 
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          _buildFilterChip(
-            label: 'All',
-            count: totalCount,
-            icon: Icons.auto_awesome_rounded,
-            isSelected: activeFilter == null,
-            colors: colors,
-            font: font,
-            onTap: () {
-              HapticFeedback.selectionClick();
-              setState(() => _selectedCategory = null);
-            },
-          ),
-          for (final cat in orderedCategories) ...[
-            const SizedBox(width: 6),
+    // All category options in render order (null represents 'All')
+    final allCategoryOptions = <NotificationCategory?>[
+      null,
+      ...orderedCategories,
+    ];
+
+    // Ensure GlobalKey exists for each category chip to enable hit detection during swipe gestures
+    for (final cat in allCategoryOptions) {
+      _chipKeys.putIfAbsent(cat, () => GlobalKey());
+    }
+
+    return Listener(
+      onPointerDown: (event) {
+        // Immediate selection on pointer down or drag start
+        _handleCategoryDragSelect(event.position, allCategoryOptions);
+      },
+      onPointerMove: (event) {
+        // Immediately move to that category as the user swipes over each chip without waiting to release
+        _handleCategoryDragSelect(event.position, allCategoryOptions);
+      },
+      child: SingleChildScrollView(
+        controller: _chipsScrollController,
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
             _buildFilterChip(
-              label: cat.displayName,
-              count: counts[cat]!,
-              icon: cat.icon,
-              isSelected: activeFilter == cat,
+              key: _chipKeys[null],
+              label: 'All',
+              count: totalCount,
+              icon: Icons.auto_awesome_rounded,
+              isSelected: activeFilter == null,
               colors: colors,
               font: font,
               onTap: () {
                 HapticFeedback.selectionClick();
-                setState(() {
-                  _selectedCategory = activeFilter == cat ? null : cat;
-                });
+                setState(() => _selectedCategory = null);
               },
             ),
+            for (final cat in orderedCategories) ...[
+              const SizedBox(width: 8),
+              _buildFilterChip(
+                key: _chipKeys[cat],
+                label: cat.displayName,
+                count: counts[cat]!,
+                icon: cat.icon,
+                isSelected: activeFilter == cat,
+                colors: colors,
+                font: font,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _selectedCategory = cat;
+                  });
+                },
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildFilterChip({
+    Key? key,
     required String label,
     required int count,
     required IconData icon,
@@ -288,26 +372,38 @@ class _NotificationListState extends State<NotificationList> {
     final fgColor = isSelected ? colors.onActivePill : colors.textPrimary;
 
     return Material(
+      key: key,
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(20),
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          duration: const Duration(milliseconds: 180),
+          curve: M3Motion.emphasized,
+          // Generous padding and minimum height for comfortable touch targets
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+          constraints: const BoxConstraints(minHeight: 38),
           decoration: BoxDecoration(
             color: bgColor,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              if (isSelected)
+                BoxShadow(
+                  color: colors.activePill.withValues(alpha: 0.28),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+            ],
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 13, color: fgColor),
-              const SizedBox(width: 5),
+              Icon(icon, size: 14.5, color: fgColor),
+              const SizedBox(width: 6.5),
               Text(
                 '$label $count',
                 style: font.textStyleBuilder(
-                  fontSize: 11.5,
+                  fontSize: 12.5,
                   fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
                   color: fgColor,
                 ),
@@ -328,7 +424,7 @@ class _NotificationListState extends State<NotificationList> {
     final hasPromo =
         bundled.any((n) => n.category == NotificationCategory.promotions);
     final hasSocial =
-        bundled.any((n) => n.category == NotificationCategory.social);
+        bundled.any((n) => n.category == NotificationCategory.socials);
     final bundleTitle = (hasPromo && hasSocial)
         ? 'Promotions & Social'
         : (hasPromo ? 'Promotions' : 'Social Updates');

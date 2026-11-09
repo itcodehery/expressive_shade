@@ -1,0 +1,43 @@
+app,channel,title,body,label
+com.google.android.dialer,incoming_calls,Incoming call,Mom is calling,Realtime
+com.ubercab,trip_updates,Your driver is arriving,Rahul in a white Swift is 2 min away,Realtime
+com.google.android.apps.maps,navigation,Turn right in 200 m,Head north on MG Road,Realtime
+com.swiggy.android,order_tracking,Order on the way,Your food will arrive in 12 minutes,Realtime
+com.application.zomato,delivery,Delivery partner nearby,Arjun is 500 m away from your location,Realtime
+com.ubercab,trip_updates,Trip started,Heading to Indiranagar - ETA 18 min,Realtime
+com.google.android.gm,otp,Your verification code,123456 is your OTP. Do not share it with anyone,Security
+com.hdfcbank.mobile,alerts,Debit alert,Rs. 2499.00 debited from A/c XX1234 at AMAZON,Security
+com.google.android.gms,security,New sign-in,Your account was accessed from a new device,Security
+com.sbi.yono,txn,Transaction alert,Rs. 500 credited to your account via UPI,Security
+com.instagram.android,security,Login code,849201 is your Instagram code,Security
+com.paytm,payments,Payment successful,You paid Rs. 120 to Chai Point,Security
+com.whatsapp,messages,Priya,Are we still meeting at 6?,Conversations
+com.google.android.apps.messaging,messages,Dad,Call me when you are free,Conversations
+org.telegram.messenger,messages,Dev Team,Sneha: pushed the fix to main,Conversations
+com.slack,dms,Karan,Can you review my PR today?,Conversations
+com.whatsapp,messages,College Group,Amit: who is bringing the snacks,Conversations
+com.google.android.gm,mail,Prof. Rao,Re: Assignment deadline extended,Conversations
+com.instagram.android,likes,Instagram,riya_22 and 14 others liked your photo,Socials
+com.twitter.android,mentions,X,@dev_sam mentioned you in a post,Socials
+com.linkedin.android,network,LinkedIn,Neha Sharma viewed your profile,Socials
+com.facebook.katana,events,Facebook,Vikram commented on your post,Socials
+com.snapchat.android,friends,Snapchat,Tina added you as a friend,Socials
+com.reddit.frontpage,replies,Reddit,u/techguy replied to your comment,Socials
+com.android.vending,updates,Updates available,5 apps can be updated,Updates
+com.amazon.mShop.android.shopping,orders,Order shipped,Your package will arrive by Thursday,Updates
+com.google.android.calendar,reminders,Event reminder,Team sync starts in 30 minutes,Updates
+com.spotify.music,new_music,New release,Your favourite artist dropped a new album,Updates
+in.irctc.railconnect,booking,Booking confirmed,PNR 4521896734 confirmed for 12 Nov,Updates
+com.google.android.apps.photos,memories,Memories,You have a new memory from last year,Updates
+com.myntra.android,sale,Mega sale is live,Up to 70% off on top brands. Shop now,Promotions
+com.flipkart.android,offers,Big Billion Days,Extra 10% off with your card today only,Promotions
+com.swiggy.android,promo,Hungry?,Get 50% off on your next order. Use code FEAST,Promotions
+com.ubercab,promo,Ride more save more,Get 20% off your next 3 rides,Promotions
+com.zomato.gold,offers,Free delivery,Gold members get free delivery this weekend,Promotions
+com.nykaa,sale,Last few hours,Flat 40% off on beauty. Do not miss out,Promotions
+android,ongoing,Charging,Charging rapidly - 45 minutes until full,Silent
+com.android.systemui,system,USB debugging connected,Tap to disable USB debugging,Silent
+com.spotify.music,playback,Now playing,Song title - Artist name,Silent
+com.google.android.apps.fitness,ongoing,Steps,4521 steps today,Silent
+com.android.chrome,downloads,Download complete,report.pdf,Silent
+com.example.vpn,ongoing,VPN is connected,Tap for more options,Silent

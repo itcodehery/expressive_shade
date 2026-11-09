@@ -3,91 +3,140 @@ import 'package:flutter/material.dart';
 
 /// Smart AI/Heuristic categorization buckets for notifications.
 enum NotificationCategory {
-  urgent,
-  people,
+  realtime,
+  security,
+  conversations,
+  socials,
   updates,
-  social,
   promotions,
-  other,
+  silent;
+
+  // Compatibility aliases
+  static const NotificationCategory urgent = NotificationCategory.realtime;
+  static const NotificationCategory people = NotificationCategory.conversations;
+  static const NotificationCategory social = NotificationCategory.socials;
+  static const NotificationCategory other = NotificationCategory.silent;
+
+  static NotificationCategory fromString(String? name) {
+    if (name == null || name.isEmpty) return NotificationCategory.silent;
+    final lower = name.trim().toLowerCase();
+    switch (lower) {
+      case 'realtime':
+      case 'urgent':
+        return NotificationCategory.realtime;
+      case 'security':
+        return NotificationCategory.security;
+      case 'conversations':
+      case 'conversation':
+      case 'people':
+      case 'chat':
+        return NotificationCategory.conversations;
+      case 'socials':
+      case 'social':
+        return NotificationCategory.socials;
+      case 'updates':
+      case 'update':
+        return NotificationCategory.updates;
+      case 'promotions':
+      case 'promotion':
+      case 'promo':
+        return NotificationCategory.promotions;
+      case 'silent':
+      case 'other':
+      default:
+        return NotificationCategory.silent;
+    }
+  }
 }
 
 extension NotificationCategoryX on NotificationCategory {
   String get displayName {
     switch (this) {
-      case NotificationCategory.urgent:
-        return 'Priority';
-      case NotificationCategory.people:
-        return 'People';
+      case NotificationCategory.realtime:
+        return 'Realtime';
+      case NotificationCategory.security:
+        return 'Security';
+      case NotificationCategory.conversations:
+        return 'Conversations';
+      case NotificationCategory.socials:
+        return 'Social';
       case NotificationCategory.updates:
         return 'Updates';
-      case NotificationCategory.social:
-        return 'Social';
       case NotificationCategory.promotions:
         return 'Promotions';
-      case NotificationCategory.other:
-        return 'Other';
+      case NotificationCategory.silent:
+        return 'Silent';
     }
   }
 
   String get shortLabel {
     switch (this) {
-      case NotificationCategory.urgent:
-        return 'Urgent';
-      case NotificationCategory.people:
+      case NotificationCategory.realtime:
+        return 'Live';
+      case NotificationCategory.security:
+        return 'Security';
+      case NotificationCategory.conversations:
         return 'Chat';
+      case NotificationCategory.socials:
+        return 'Social';
       case NotificationCategory.updates:
         return 'Update';
-      case NotificationCategory.social:
-        return 'Social';
       case NotificationCategory.promotions:
         return 'Promo';
-      case NotificationCategory.other:
-        return 'General';
+      case NotificationCategory.silent:
+        return 'Silent';
     }
   }
 
   IconData get icon {
     switch (this) {
-      case NotificationCategory.urgent:
+      case NotificationCategory.realtime:
         return Icons.bolt_rounded;
-      case NotificationCategory.people:
+      case NotificationCategory.security:
+        return Icons.shield_rounded;
+      case NotificationCategory.conversations:
         return Icons.forum_rounded;
+      case NotificationCategory.socials:
+        return Icons.group_rounded;
       case NotificationCategory.updates:
         return Icons.local_shipping_rounded;
-      case NotificationCategory.social:
-        return Icons.group_rounded;
       case NotificationCategory.promotions:
         return Icons.local_offer_rounded;
-      case NotificationCategory.other:
-        return Icons.notifications_rounded;
+      case NotificationCategory.silent:
+        return Icons.notifications_paused_rounded;
     }
   }
 
   /// Lower number = higher priority in the notification shade.
+  /// Realtime: 1, Security: 1, Conversations: 2, Socials: 3, Updates: 4, Promotions: 5, Silent: 6
   int get priorityRank {
     switch (this) {
-      case NotificationCategory.urgent:
-        return 0;
-      case NotificationCategory.people:
+      case NotificationCategory.realtime:
         return 1;
-      case NotificationCategory.updates:
+      case NotificationCategory.security:
+        return 1;
+      case NotificationCategory.conversations:
         return 2;
-      case NotificationCategory.other:
+      case NotificationCategory.socials:
         return 3;
-      case NotificationCategory.social:
+      case NotificationCategory.updates:
         return 4;
       case NotificationCategory.promotions:
         return 5;
+      case NotificationCategory.silent:
+        return 6;
     }
   }
 
   bool get isHighPriority =>
-      this == NotificationCategory.urgent ||
-      this == NotificationCategory.people;
+      this == NotificationCategory.realtime ||
+      this == NotificationCategory.security ||
+      this == NotificationCategory.conversations;
 
   bool get isLowPriorityBundleable =>
       this == NotificationCategory.promotions ||
-      this == NotificationCategory.social;
+      this == NotificationCategory.socials ||
+      this == NotificationCategory.silent;
 }
 
 /// A single actionable button exposed by a notification.
@@ -151,7 +200,7 @@ class NotificationModel {
     this.groupKey,
     this.channelId = '',
     this.androidCategory = '',
-    this.category = NotificationCategory.other,
+    this.category = NotificationCategory.silent,
     this.categoryConfidence = 0.5,
     this.extractedOtp,
     this.isUserCategoryOverride = false,

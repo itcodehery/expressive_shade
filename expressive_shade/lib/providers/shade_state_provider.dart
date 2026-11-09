@@ -213,6 +213,11 @@ class ShadeStateProvider extends ChangeNotifier {
         } catch (_) {}
       }
     }
+    if (s['smartClassifierEnabled'] != null) {
+      _smartClassifierEnabled = s['smartClassifierEnabled'] == true ||
+          s['smartClassifierEnabled'] == 'true';
+      SmartNotificationClassifier.isEnabled = _smartClassifierEnabled;
+    }
     if (s['notificationCategoryOverrides'] != null) {
       try {
         final dynamic raw = s['notificationCategoryOverrides'];
@@ -277,6 +282,9 @@ class ShadeStateProvider extends ChangeNotifier {
     }
     if (dirty.contains('inlineLyricsEnabled')) {
       map['inlineLyricsEnabled'] = _inlineLyricsEnabled;
+    }
+    if (dirty.contains('smartClassifierEnabled') || all) {
+      map['smartClassifierEnabled'] = _smartClassifierEnabled;
     }
     if (dirty.contains('notificationStyle')) {
       map['notificationStyle'] = _notificationStyle.name;
@@ -1281,9 +1289,28 @@ class ShadeStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool _smartClassifierEnabled = true;
+  bool get isSmartClassifierEnabled => _smartClassifierEnabled;
+
+  void setSmartClassifierEnabled(bool enabled) {
+    if (_smartClassifierEnabled == enabled) return;
+    _smartClassifierEnabled = enabled;
+    SmartNotificationClassifier.isEnabled = enabled;
+    _reclassifyExistingNotifications();
+    _scheduleSave({'smartClassifierEnabled'});
+    notifyListeners();
+  }
+
   void _reclassifyExistingNotifications() {
     if (_notifications.isEmpty) return;
     _notifications = _notifications.map((n) {
+      if (!_smartClassifierEnabled) {
+        return n.copyWith(
+          category: NotificationCategory.silent,
+          categoryConfidence: 0.0,
+          extractedOtp: null,
+        );
+      }
       final pkg = n.packageName.isNotEmpty ? n.packageName : n.appName;
       final res = SmartNotificationClassifier.classify(
         appName: n.appName,

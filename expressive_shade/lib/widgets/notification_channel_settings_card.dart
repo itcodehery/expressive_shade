@@ -238,11 +238,13 @@ class _NotificationChannelSettingsCardState
             child: Row(
               children: [
                 for (final cat in [
-                  NotificationCategory.urgent,
-                  NotificationCategory.people,
+                  NotificationCategory.realtime,
+                  NotificationCategory.security,
+                  NotificationCategory.conversations,
+                  NotificationCategory.socials,
                   NotificationCategory.updates,
-                  NotificationCategory.social,
                   NotificationCategory.promotions,
+                  NotificationCategory.silent,
                 ])
                   Padding(
                     padding: const EdgeInsets.only(right: 6),

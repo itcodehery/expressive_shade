@@ -59,10 +59,6 @@ class ServiceTab extends StatelessWidget {
                 ? colors.activePill.withValues(alpha: 0.18)
                 : colors.surface,
             borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: state.isServiceEnabled ? colors.activePill : Colors.transparent,
-              width: 2,
-            ),
             boxShadow: [
               if (state.isServiceEnabled)
                 BoxShadow(
@@ -210,6 +206,20 @@ class ServiceTab extends StatelessWidget {
           state: state,
           colors: colors,
         ),
+        const SizedBox(height: 12),
+
+        // 5. Smart Notification Classifier Toggle
+        _buildClassifierToggleItem(
+          title: 'Smart Notification Classifier',
+          description: 'Offline ML & heuristic categorization into Realtime, Security, Conversations, Updates, and Promotions with 1-tap OTP actions.',
+          isEnabled: state.isSmartClassifierEnabled,
+          onChanged: (val) {
+            HapticFeedback.mediumImpact();
+            state.setSmartClassifierEnabled(val);
+          },
+          state: state,
+          colors: colors,
+        ),
         const SizedBox(height: 24),
 
         // Action Buttons: Refresh & App Info
@@ -282,10 +292,6 @@ class ServiceTab extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.surface,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: isGranted ? Colors.green.withValues(alpha: 0.4) : colors.textSecondary.withValues(alpha: 0.15),
-            width: isGranted ? 1.5 : 1.0,
-          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,6 +371,114 @@ class ServiceTab extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildClassifierToggleItem({
+    required String title,
+    required String description,
+    required bool isEnabled,
+    required ValueChanged<bool> onChanged,
+    required ShadeStateProvider state,
+    required ExpressiveThemeColors colors,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: isEnabled
+                  ? colors.activePill.withValues(alpha: 0.18)
+                  : colors.inactivePill.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.auto_awesome_rounded,
+              size: 22,
+              color: isEnabled ? colors.activePill : colors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: isEnabled
+                            ? colors.activePill.withValues(alpha: 0.18)
+                            : colors.inactivePill.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        isEnabled ? 'Active' : 'Off',
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isEnabled ? colors.activePill : colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: state.selectedFont.textStyleBuilder(
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.offline_bolt_rounded,
+                      size: 13,
+                      color: isEnabled ? Colors.greenAccent.shade700 : colors.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      'On-Device • 7 Categories • Offline',
+                      style: state.selectedFont.textStyleBuilder(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isEnabled ? Colors.greenAccent.shade700 : colors.textSecondary,
+                      ),
+                    ),
+                    const Spacer(),
+                    M3ESwitch(
+                      value: isEnabled,
+                      onChanged: onChanged,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

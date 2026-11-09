@@ -176,3 +176,38 @@ class ExpressiveThemeColors {
     );
   }
 }
+
+/// Material 3 Motion tokens and easing curves per m3.material.io specifications.
+class M3Motion {
+  M3Motion._();
+
+  // Material 3 Emphasized Easing Curves
+  /// Easing used when elements enter or containers expand.
+  static const Cubic emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1.0);
+
+  /// Easing used when elements exit or containers collapse.
+  static const Cubic emphasizedAccelerate = Cubic(0.3, 0.0, 0.8, 0.15);
+
+  /// Complete emphasized transition curve (bidirectional / standard emphasized).
+  static const Cubic emphasized = Cubic(0.2, 0.0, 0.0, 1.0);
+
+  /// Material 3 Standard Decelerate.
+  static const Cubic standardDecelerate = Cubic(0.0, 0.0, 0.2, 1.0);
+
+  /// Material 3 Standard Accelerate.
+  static const Cubic standardAccelerate = Cubic(0.4, 0.0, 1.0, 1.0);
+
+  // Material 3 Motion Durations
+  /// Duration for container expansion (~380ms).
+  static const Duration expandDuration = Duration(milliseconds: 380);
+
+  /// Duration for container collapse (~260ms).
+  static const Duration collapseDuration = Duration(milliseconds: 260);
+
+  /// Duration for group transition or cross-fades (~320ms).
+  static const Duration groupDuration = Duration(milliseconds: 320);
+
+  /// Quick icon or micro-interaction rotation duration (~260ms).
+  static const Duration microDuration = Duration(milliseconds: 260);
+}
+

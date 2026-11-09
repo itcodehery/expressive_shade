@@ -12,8 +12,7 @@ import '../../../../widgets/expressive_media_card.dart';
 import '../../lyrics/widgets/inline_lyrics_view.dart';
 import '../../../../widgets/expressive_pill.dart';
 import '../../../../widgets/expressive_slider.dart';
-import '../../../../widgets/notification_channel_settings_card.dart';
-import '../../../../widgets/springy_dismissible_notification.dart';
+import '../../notifications/notification_card.dart';
 import '../common/shade_tiles_grid.dart';
 import 'widgets/matrix_header.dart';
 import 'widgets/matrix_tile.dart';
@@ -107,30 +106,6 @@ class CompactMatrixView extends StatefulWidget {
 }
 
 class _CompactMatrixViewState extends State<CompactMatrixView> {
-  String? _settingsNotifId;
-  String? _replyingNotifId;
-  NotificationAction? _replyingAction;
-  final TextEditingController _replyController = TextEditingController();
-
-  @override
-  void dispose() {
-    _replyController.dispose();
-    super.dispose();
-  }
-
-  void _submitReply(NotificationModel notif, NotificationAction action) {
-    final text = _replyController.text.trim();
-    if (text.isNotEmpty && widget.onReply != null) {
-      HapticFeedback.mediumImpact();
-      widget.onReply!(notif, action, text);
-      _replyController.clear();
-      setState(() {
-        _replyingNotifId = null;
-        _replyingAction = null;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final rows3 = packTilesInto3ColRows(widget.tiles);
@@ -395,14 +370,15 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
         if (rawNotif.isGroupSummary) continue;
         final notif = _resolveClassified(rawNotif);
         switch (notif.category) {
-          case NotificationCategory.urgent:
-          case NotificationCategory.people:
+          case NotificationCategory.realtime:
+          case NotificationCategory.security:
+          case NotificationCategory.conversations:
             priorityList.add(notif);
           case NotificationCategory.updates:
-          case NotificationCategory.other:
             updatesList.add(notif);
-          case NotificationCategory.social:
+          case NotificationCategory.socials:
           case NotificationCategory.promotions:
+          case NotificationCategory.silent:
             lowPriorityList.add(notif);
         }
       }
@@ -470,259 +446,26 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
     required bool isFirst,
     required bool isLast,
   }) {
-    final BorderRadius borderRadius = switch (widget.notificationStyle) {
-      NotificationStyle.compact => BorderRadius.circular(16),
-      NotificationStyle.oneui => BorderRadius.circular(32),
-      NotificationStyle.ios => BorderRadius.circular(20),
-      NotificationStyle.hyperOS => BorderRadius.circular(22),
-      NotificationStyle.android17 => BorderRadius.only(
-          topLeft: Radius.circular(isFirst ? 22 : 8),
-          topRight: Radius.circular(isFirst ? 22 : 8),
-          bottomLeft: Radius.circular(isLast ? 22 : 8),
-          bottomRight: Radius.circular(isLast ? 22 : 8),
-        ),
-    };
-
-    final EdgeInsets margin = switch (widget.notificationStyle) {
-      NotificationStyle.compact => const EdgeInsets.only(bottom: 8),
-      NotificationStyle.oneui => const EdgeInsets.only(bottom: 8),
-      NotificationStyle.ios => const EdgeInsets.only(bottom: 10),
-      NotificationStyle.hyperOS => const EdgeInsets.only(bottom: 10),
-      NotificationStyle.android17 => EdgeInsets.only(bottom: isLast ? 10 : 3),
-    };
-
-    final Color cardBg = switch (widget.notificationStyle) {
-      NotificationStyle.compact => widget.colors.notificationCardBackground,
-      NotificationStyle.ios => widget.colors.isDark
-          ? Color.alphaBlend(Colors.white.withValues(alpha: 0.05), widget.colors.notificationCardBackground)
-          : Color.alphaBlend(Colors.black.withValues(alpha: 0.03), widget.colors.notificationCardBackground),
-      NotificationStyle.oneui => widget.colors.notificationCardBackground,
-      NotificationStyle.hyperOS => widget.colors.notificationCardBackground,
-      NotificationStyle.android17 => widget.colors.notificationCardBackground,
-    };
-
-    if (_settingsNotifId == notif.id) {
-      return NotificationChannelSettingsCard(
-        notification: notif,
-        colors: widget.colors,
-        font: widget.font,
-        borderRadius: borderRadius,
-        onClose: () => setState(() => _settingsNotifId = null),
-      );
-    }
-
-    return SpringyDismissibleNotification(
-      key: Key('matrix_notif_${notif.id}'),
+    return NotificationCard(
+      key: ValueKey(notif.id),
+      notification: notif,
       colors: widget.colors,
-      borderRadius: borderRadius,
-      margin: margin,
-      onDismissed: () => widget.onDismissNotification(notif.id),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.lightImpact();
-          widget.onOpenNotification(notif);
-        },
-        onLongPress: () {
-          HapticFeedback.heavyImpact();
-          setState(() {
-            _settingsNotifId = (_settingsNotifId == notif.id) ? null : notif.id;
-          });
-        },
-        child: ClipRRect(
-          borderRadius: borderRadius,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
-            decoration: BoxDecoration(
-              color: cardBg,
-              borderRadius: borderRadius,
-              border: Border.all(
-                color: widget.colors.isDark
-                    ? Colors.white.withValues(alpha: 0.06)
-                    : Colors.black.withValues(alpha: 0.05),
-                width: 0.8,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: widget.colors.isDark ? 0.22 : 0.04),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 26,
-                      height: 26,
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: notif.appColor.withValues(alpha: 0.20),
-                        borderRadius: BorderRadius.circular(7),
-                      ),
-                      child: notif.appIconBytes != null
-                          ? Image.memory(
-                              notif.appIconBytes!,
-                              width: 26,
-                              height: 26,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => Center(
-                                child: Icon(notif.appIcon, size: 14, color: notif.appColor),
-                              ),
-                            )
-                          : Center(
-                              child: Icon(notif.appIcon, size: 14, color: notif.appColor),
-                            ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Flexible(
-                                child: Text(
-                                  notif.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: widget.font.textStyleBuilder(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: widget.colors.textPrimary,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '• ${notif.timeAgo}',
-                                style: widget.font.textStyleBuilder(
-                                  fontSize: 10.5,
-                                  color: widget.colors.textSecondary.withValues(alpha: 0.7),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            notif.content,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: widget.font.textStyleBuilder(
-                              fontSize: 11.5,
-                              color: widget.colors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                if (notif.actions.isNotEmpty || widget.onSnoozeNotification != null) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      for (final action in notif.actions)
-                        _buildActionChip(
-                          label: action.title,
-                          colors: widget.colors,
-                          font: widget.font,
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            if (action.hasRemoteInput && widget.onReply != null) {
-                              setState(() {
-                                if (_replyingNotifId == notif.id && _replyingAction == action) {
-                                  _replyingNotifId = null;
-                                  _replyingAction = null;
-                                } else {
-                                  _replyingNotifId = notif.id;
-                                  _replyingAction = action;
-                                }
-                              });
-                            } else {
-                              widget.onActionTap?.call(notif, action);
-                            }
-                          },
-                        ),
-                      if (widget.onSnoozeNotification != null)
-                        _buildActionChip(
-                          label: 'Snooze',
-                          colors: widget.colors,
-                          font: widget.font,
-                          onTap: () {
-                            HapticFeedback.lightImpact();
-                            widget.onSnoozeNotification!(notif);
-                          },
-                        ),
-                    ],
-                  ),
-                ],
-                if (_replyingNotifId == notif.id && _replyingAction != null) ...[
-                  const SizedBox(height: 8),
-                  TextField(
-                    controller: _replyController,
-                    autofocus: true,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _submitReply(notif, _replyingAction!),
-                    style: widget.font.textStyleBuilder(
-                      fontSize: 12.5,
-                      color: widget.colors.textPrimary,
-                    ),
-                    decoration: InputDecoration(
-                      isDense: true,
-                      hintText: _replyingAction!.title,
-                      hintStyle: widget.font.textStyleBuilder(
-                        fontSize: 12.5,
-                        color: widget.colors.textSecondary,
-                      ),
-                      filled: true,
-                      fillColor: widget.colors.background.withValues(alpha: 0.8),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: BorderSide.none,
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(Icons.send_rounded, size: 16, color: widget.colors.activePill),
-                        onPressed: () => _submitReply(notif, _replyingAction!),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionChip({
-    required String label,
-    required ExpressiveThemeColors colors,
-    required FontConfig font,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text(
-          label,
-          style: font.textStyleBuilder(
-            fontSize: 12.0,
-            fontWeight: FontWeight.w600,
-            color: colors.activePill,
-          ),
-        ),
-      ),
+      font: widget.font,
+      style: widget.notificationStyle,
+      isFirstInGroup: isFirst,
+      isLastInGroup: isLast,
+      groupCount: 1,
+      onDismiss: () => widget.onDismissNotification(notif.id),
+      onActionTap: widget.onActionTap != null
+          ? (a) => widget.onActionTap!(notif, a)
+          : null,
+      onReply: widget.onReply != null
+          ? (a, text) => widget.onReply!(notif, a, text)
+          : null,
+      onTap: () => widget.onOpenNotification(notif),
+      onSnooze: widget.onSnoozeNotification != null
+          ? () => widget.onSnoozeNotification!(notif)
+          : null,
     );
   }
 

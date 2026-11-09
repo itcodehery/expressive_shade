@@ -213,7 +213,7 @@ void main() {
         content: 'Your verification code is 482910. Do not share this OTP.',
       );
 
-      expect(otpRes.category, NotificationCategory.urgent);
+      expect(otpRes.category, NotificationCategory.security);
       expect(otpRes.extractedOtp, '482910');
 
       final otpNotif = sampleNotif.copyWith(
@@ -292,7 +292,7 @@ void main() {
       );
       expect(instaDmRes.category, NotificationCategory.people);
 
-      // 4c. Bank UPI debit inside SMS app (even with isConversation: true & hasReplyAction: true) -> Updates
+      // 4c. Bank UPI debit inside SMS app (even with isConversation: true & hasReplyAction: true) -> Security
       final bankSmsRes = SmartNotificationClassifier.classify(
         appName: 'Messages',
         packageName: 'com.google.android.apps.messaging',
@@ -301,7 +301,7 @@ void main() {
         isConversation: true,
         hasReplyAction: true,
       );
-      expect(bankSmsRes.category, NotificationCategory.updates);
+      expect(bankSmsRes.category, NotificationCategory.security);
 
       // 4d. Courier AWB tracking inside SMS app -> Updates
       final courierSmsRes = SmartNotificationClassifier.classify(
@@ -404,7 +404,7 @@ void main() {
 
       // Category filter chips visible
       expect(find.text('All 3'), findsOneWidget);
-      expect(find.text('People 1'), findsOneWidget);
+      expect(find.text('Conversations 1'), findsOneWidget);
       expect(find.text('Promotions 2'), findsOneWidget);
 
       // High-priority message is visible at top, while the 2 promos are bundled into the digest card
@@ -417,6 +417,58 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('50% OFF Flash Sale'), findsOneWidget);
+    });
+
+    testWidgets('NotificationList category chips support swipe-through selection', (tester) async {
+      final list = [
+        sampleNotif,
+        const NotificationModel(
+          id: 'promo_1',
+          packageName: 'com.shop.one',
+          appName: 'ShopOne',
+          title: '50% OFF Flash Sale',
+          content: 'Use coupon SAVE50 to shop now!',
+          timeAgo: '2m',
+          appIcon: Icons.local_offer_rounded,
+          appColor: Colors.orange,
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: NotificationList(
+                notifications: list,
+                colors: colors,
+                font: font,
+                onDismiss: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // Initially 'All' is selected
+      expect(find.text('All 2'), findsOneWidget);
+      expect(find.text('Conversations 1'), findsOneWidget);
+      expect(find.text('Promotions 1'), findsOneWidget);
+
+      // Both notifications visible in All
+      expect(find.text('Alice Chen'), findsOneWidget);
+      expect(find.text('50% OFF Flash Sale'), findsOneWidget);
+
+      // Drag across chips to Promotions
+      final promoChip = find.text('Promotions 1');
+      await tester.drag(promoChip, const Offset(-10, 0));
+      await tester.pumpAndSettle();
+
+      // Tap or touch-swiping to Promotions shows only the promo
+      await tester.tap(promoChip);
+      await tester.pumpAndSettle();
+
+      expect(find.text('50% OFF Flash Sale'), findsOneWidget);
+      expect(find.text('Alice Chen'), findsNothing);
     });
   });
 }
