@@ -3,6 +3,7 @@ package com.example.expressive_shade
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -11,6 +12,8 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs
+import io.flutter.embedding.android.RenderMode
+import io.flutter.embedding.android.TransparencyMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
@@ -31,12 +34,21 @@ class ShadeOverlayActivity : FlutterActivity() {
         return FlutterActivityLaunchConfigs.BackgroundMode.transparent
     }
 
+    override fun getRenderMode(): RenderMode {
+        return RenderMode.texture
+    }
+
+    override fun getTransparencyMode(): TransparencyMode {
+        return TransparencyMode.transparent
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         currentInstance = this
         overridePendingTransition(0, 0)
         ExpressiveAccessibilityService.isOverlayShowing = true
 
+        window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         window.statusBarColor = Color.TRANSPARENT
         window.navigationBarColor = Color.TRANSPARENT
 

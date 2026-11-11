@@ -53,8 +53,11 @@ class ExpressiveShadeApp extends StatelessWidget {
                 if (uri.path == '/overlay') {
                   final target =
                       uri.queryParameters['target'] ?? 'quick_settings';
-                  return MaterialPageRoute(
-                    builder: (_) => ShadeOverlayScreen(initialTarget: target),
+                  return PageRouteBuilder(
+                    opaque: false,
+                    barrierColor: Colors.transparent,
+                    pageBuilder: (_, __, ___) =>
+                        ShadeOverlayScreen(initialTarget: target),
                     settings: settings,
                   );
                 }

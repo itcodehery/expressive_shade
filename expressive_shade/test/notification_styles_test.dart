@@ -20,20 +20,22 @@ void main() {
   final font = FontConfig.availableFonts.first;
 
   group('NotificationStyle Enum and Extension Tests', () {
-    test('NotificationStyle contains exactly the 5 distinct styles', () {
-      expect(NotificationStyle.values.length, 5);
+    test('NotificationStyle contains exactly the 6 distinct styles', () {
+      expect(NotificationStyle.values.length, 6);
       expect(NotificationStyle.values, contains(NotificationStyle.android17));
       expect(NotificationStyle.values, contains(NotificationStyle.ios));
       expect(NotificationStyle.values, contains(NotificationStyle.oneui));
       expect(NotificationStyle.values, contains(NotificationStyle.compact));
       expect(NotificationStyle.values, contains(NotificationStyle.hyperOS));
+      expect(NotificationStyle.values, contains(NotificationStyle.joined));
     });
 
     test('Each style provides unique display name and description', () {
       final names = NotificationStyle.values.map((s) => s.displayName).toSet();
-      expect(names.length, 5);
+      expect(names.length, 6);
 
       expect(NotificationStyle.compact.displayName, 'Compact Mode');
+      expect(NotificationStyle.joined.displayName, 'Joined');
       for (final style in NotificationStyle.values) {
         expect(style.displayName.isNotEmpty, isTrue);
         expect(style.description.isNotEmpty, isTrue);
@@ -103,6 +105,46 @@ void main() {
         expect(find.byType(FractionallySizedBox), findsNothing);
         expect(find.byType(LinearProgressIndicator), findsNothing);
       }
+    });
+
+    testWidgets('Joined Style renders two-column layout with clock time, app name and title', (tester) async {
+      final joinedNotif = sampleNotif.copyWith(
+        appName: 'Slack',
+        title: 'Shared meeting-notes',
+        content: 'Notes from today team sync...',
+        timeAgo: '17:46',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: NotificationCard(
+              notification: joinedNotif,
+              colors: colors,
+              font: font,
+              style: NotificationStyle.joined,
+              onDismiss: () {},
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('17:46'), findsOneWidget);
+      expect(find.text('Slack'), findsOneWidget);
+      expect(find.text('Shared meeting-notes'), findsOneWidget);
+    });
+
+    test('iOS relative timestamps format correctly as now, 3m ago, etc.', () {
+      final nowNotif = sampleNotif.copyWith(timeAgo: 'Just now');
+      expect(nowNotif.relativeTime, 'now');
+
+      final threeMinAgo = DateTime.now().subtract(const Duration(minutes: 3)).millisecondsSinceEpoch;
+      final threeMinNotif = sampleNotif.copyWith(postTime: threeMinAgo);
+      expect(threeMinNotif.relativeTime, '3m ago');
+
+      final fourMinAgo = DateTime.now().subtract(const Duration(minutes: 4)).millisecondsSinceEpoch;
+      final fourMinNotif = sampleNotif.copyWith(postTime: fourMinAgo);
+      expect(fourMinNotif.relativeTime, '4m ago');
     });
 
     testWidgets('Compact Mode renders sleek card and primary pill action', (tester) async {

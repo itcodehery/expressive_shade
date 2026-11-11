@@ -117,9 +117,9 @@ class SplitShadeView extends StatelessWidget {
                 ),
               ),
 
-              // Page 1: Control Center Panel (Completely Opaque Tiles)
+              // Page 1: Control Center Panel
               Container(
-                color: colors.background,
+                color: Colors.transparent,
                 child: ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                   children: [

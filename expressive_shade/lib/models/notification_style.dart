@@ -14,6 +14,9 @@ enum NotificationStyle {
 
   /// HyperOS / Dynamic Island: vertical left accent bar, mini capsule app badge, floating pill chip actions.
   hyperOS,
+
+  /// Joined Style: Two-column layout with left-aligned time and source column, joined rounded containers, and status badges.
+  joined,
 }
 
 extension NotificationStyleExtension on NotificationStyle {
@@ -29,6 +32,8 @@ extension NotificationStyleExtension on NotificationStyle {
         return 'Compact Mode';
       case NotificationStyle.hyperOS:
         return 'HyperOS Floating Pill';
+      case NotificationStyle.joined:
+        return 'Joined';
     }
   }
 
@@ -44,6 +49,8 @@ extension NotificationStyleExtension on NotificationStyle {
         return 'Ultra-compact cards with inline action; swipe right to reveal actions tray or swipe fully to dismiss';
       case NotificationStyle.hyperOS:
         return 'HyperOS floating capsule with vertical color accent bar, micro-capsule tag, and pill chips';
+      case NotificationStyle.joined:
+        return 'Two-column layout with left-aligned time & app label, joined card containers, and status badges';
     }
   }
 }

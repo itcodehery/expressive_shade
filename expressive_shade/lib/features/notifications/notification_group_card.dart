@@ -110,15 +110,17 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
         : '${effectiveChildren.length} notifications';
 
     final BorderRadius groupBorderRadius = switch (widget.style) {
-      NotificationStyle.compact => BorderRadius.circular(16),
+      NotificationStyle.compact => BorderRadius.circular(20),
       NotificationStyle.oneui => BorderRadius.circular(32),
       NotificationStyle.ios => BorderRadius.circular(20),
       NotificationStyle.hyperOS => BorderRadius.circular(22),
+      NotificationStyle.joined => BorderRadius.circular(24),
       NotificationStyle.android17 => BorderRadius.circular(24),
     };
 
     final Color groupCardBg = switch (widget.style) {
       NotificationStyle.compact => colors.notificationCardBackground,
+      NotificationStyle.joined => colors.notificationCardBackground,
       NotificationStyle.ios => colors.isDark
           ? Color.alphaBlend(Colors.white.withValues(alpha: 0.05), colors.notificationCardBackground)
           : Color.alphaBlend(Colors.black.withValues(alpha: 0.03), colors.notificationCardBackground),
@@ -297,7 +299,11 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
 
             // Timestamp
             Text(
-              primaryNotif.timeAgo,
+              widget.style == NotificationStyle.ios
+                  ? primaryNotif.relativeTime
+                  : (widget.style == NotificationStyle.joined
+                      ? primaryNotif.clockTime
+                      : primaryNotif.timeAgo),
               style: font.textStyleBuilder(
                 fontSize: 11.5,
                 color: colors.textSecondary.withValues(alpha: 0.8),
@@ -409,7 +415,11 @@ class _NotificationGroupCardState extends State<NotificationGroupCard>
                               ),
                               const SizedBox(width: 6),
                               Text(
-                                notif.timeAgo,
+                                widget.style == NotificationStyle.ios
+                                    ? notif.relativeTime
+                                    : (widget.style == NotificationStyle.joined
+                                        ? notif.clockTime
+                                        : notif.timeAgo),
                                 style: font.textStyleBuilder(
                                   fontSize: 11.5,
                                   color: colors.textSecondary.withValues(alpha: 0.7),

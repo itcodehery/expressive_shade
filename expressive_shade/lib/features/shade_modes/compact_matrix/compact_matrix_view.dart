@@ -122,7 +122,7 @@ class _CompactMatrixViewState extends State<CompactMatrixView> {
         // 1 & 2. Top Opaque Area: Header Chips, Sliders & Quick Tiles (Full Width Edge-to-Edge)
         Container(
           width: double.infinity,
-          color: widget.colors.background,
+          color: Colors.transparent,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

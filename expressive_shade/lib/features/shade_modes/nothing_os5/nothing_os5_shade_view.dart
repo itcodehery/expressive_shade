@@ -111,7 +111,7 @@ class NothingOs5ShadeView extends StatelessWidget {
     final topInset = topPadding > 0 ? topPadding + 8.0 : 16.0;
 
     return Container(
-      color: colors.background,
+      color: Colors.transparent,
       child: Column(
         children: [
           // Shared Top Status Header (Time, Date, Battery & Carrier stay stationary across both panes)
@@ -151,7 +151,7 @@ class NothingOs5ShadeView extends StatelessWidget {
         : Colors.white.withValues(alpha: 0.85);
 
     return Container(
-      color: colors.background,
+      color: Colors.transparent,
       child: Column(
         children: [
           Expanded(

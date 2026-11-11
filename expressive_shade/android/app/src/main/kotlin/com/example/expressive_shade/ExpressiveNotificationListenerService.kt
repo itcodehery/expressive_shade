@@ -244,6 +244,7 @@ class ExpressiveNotificationListenerService : NotificationListenerService() {
                     "title" to (title ?: ""),
                     "content" to (text ?: ""),
                     "timestamp" to timestamp,
+                    "postTime" to sbn.postTime,
                     "isOngoing" to sbn.isOngoing,
                     "isClearable" to sbn.isClearable,
                     "actions" to actions,

@@ -162,6 +162,7 @@ class NotificationModel {
   final String title;
   final String content;
   final String timeAgo;
+  final int? postTime;
   final IconData appIcon;
   final Color appColor;
   final Uint8List? appIconBytes;
@@ -187,6 +188,7 @@ class NotificationModel {
     required this.title,
     required this.content,
     required this.timeAgo,
+    this.postTime,
     required this.appIcon,
     required this.appColor,
     this.appIconBytes,
@@ -213,6 +215,7 @@ class NotificationModel {
     String? title,
     String? content,
     String? timeAgo,
+    int? postTime,
     IconData? appIcon,
     Color? appColor,
     Uint8List? appIconBytes,
@@ -238,6 +241,7 @@ class NotificationModel {
       title: title ?? this.title,
       content: content ?? this.content,
       timeAgo: timeAgo ?? this.timeAgo,
+      postTime: postTime ?? this.postTime,
       appIcon: appIcon ?? this.appIcon,
       appColor: appColor ?? this.appColor,
       appIconBytes: appIconBytes ?? this.appIconBytes,
@@ -257,6 +261,56 @@ class NotificationModel {
       isUserCategoryOverride:
           isUserCategoryOverride ?? this.isUserCategoryOverride,
     );
+  }
+
+  /// Relative iOS-style timestamp: "now", "3m ago", "4m ago", "1h ago", "2d ago".
+  String get relativeTime {
+    if (postTime != null && postTime! > 0) {
+      final diff = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(postTime!));
+      if (diff.inSeconds < 60) return 'now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      return '${(diff.inDays / 7).floor()}w ago';
+    }
+    final lower = timeAgo.toLowerCase().trim();
+    if (lower == 'now' || lower == 'just now') return 'now';
+    if (lower.endsWith('m ago') || lower.endsWith('h ago') || lower.endsWith('d ago')) return timeAgo;
+    if (lower.contains('m') && lower.contains('ago')) {
+      final mMatch = RegExp(r'(\d+)\s*m').firstMatch(lower);
+      if (mMatch != null) return '${mMatch.group(1)}m ago';
+    }
+    // If it's a clock time like 10:32, compare with current time
+    final timeMatch = RegExp(r'(\d{1,2}):(\d{2})').firstMatch(timeAgo);
+    if (timeMatch != null) {
+      final h = int.tryParse(timeMatch.group(1)!) ?? 0;
+      final m = int.tryParse(timeMatch.group(2)!) ?? 0;
+      final now = DateTime.now();
+      var notifTime = DateTime(now.year, now.month, now.day, h, m);
+      if (notifTime.isAfter(now)) {
+        notifTime = notifTime.subtract(const Duration(days: 1));
+      }
+      final diff = now.difference(notifTime);
+      if (diff.inMinutes < 1) return 'now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${diff.inDays}d ago';
+    }
+    return timeAgo;
+  }
+
+  /// Clock 24h timestamp for Joined style: "17:46", "13:12", "11:11".
+  String get clockTime {
+    if (postTime != null && postTime! > 0) {
+      final dt = DateTime.fromMillisecondsSinceEpoch(postTime!);
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '$h:$m';
+    }
+    final timeMatch = RegExp(r'(\d{1,2}:\d{2})').firstMatch(timeAgo);
+    if (timeMatch != null) return timeMatch.group(1)!;
+    final now = DateTime.now();
+    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
   }
 
   /// Cheap value comparison used to skip UI rebuilds when a refresh brought no changes.

@@ -97,13 +97,23 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
   BorderRadius _computeBorderRadius() {
     switch (widget.style) {
       case NotificationStyle.compact:
-        return BorderRadius.circular(16);
+        return BorderRadius.circular(20);
       case NotificationStyle.oneui:
         return BorderRadius.circular(32);
       case NotificationStyle.ios:
         return BorderRadius.circular(20);
       case NotificationStyle.hyperOS:
         return BorderRadius.circular(22);
+      case NotificationStyle.joined:
+        if (widget.groupCount <= 1) {
+          return BorderRadius.circular(22);
+        }
+        return BorderRadius.only(
+          topLeft: Radius.circular(widget.isFirstInGroup ? 22 : 6),
+          topRight: Radius.circular(widget.isFirstInGroup ? 22 : 6),
+          bottomLeft: Radius.circular(widget.isLastInGroup ? 22 : 6),
+          bottomRight: Radius.circular(widget.isLastInGroup ? 22 : 6),
+        );
       case NotificationStyle.android17:
         if (widget.groupCount <= 1) {
           return BorderRadius.circular(24);
@@ -127,6 +137,10 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
         return const EdgeInsets.only(bottom: 10);
       case NotificationStyle.hyperOS:
         return const EdgeInsets.only(bottom: 10);
+      case NotificationStyle.joined:
+        return EdgeInsets.only(
+          bottom: (widget.groupCount <= 1 || widget.isLastInGroup) ? 8 : 2,
+        );
       case NotificationStyle.android17:
         return EdgeInsets.only(
           bottom: (widget.groupCount <= 1 || widget.isLastInGroup) ? 10 : 3,
@@ -137,6 +151,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
   Color _computeCardBg(ExpressiveThemeColors colors) {
     switch (widget.style) {
       case NotificationStyle.compact:
+      case NotificationStyle.joined:
         return colors.notificationCardBackground;
       case NotificationStyle.ios:
         return colors.isDark
@@ -163,6 +178,14 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
           BoxShadow(
             color: Colors.black.withValues(alpha: colors.isDark ? 0.22 : 0.04),
             blurRadius: 5,
+            offset: const Offset(0, 2),
+          ),
+        ];
+      case NotificationStyle.joined:
+        return [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: colors.isDark ? 0.22 : 0.04),
+            blurRadius: 6,
             offset: const Offset(0, 2),
           ),
         ];
@@ -273,6 +296,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                   NotificationStyle.ios => _buildIosContent(notification, colors, font),
                   NotificationStyle.oneui => _buildOneUiContent(notification, colors, font),
                   NotificationStyle.hyperOS => _buildHyperOsContent(notification, colors, font),
+                  NotificationStyle.joined => _buildJoinedContent(notification, colors, font),
                   NotificationStyle.compact => const SizedBox.shrink(),
                 },
 
@@ -844,7 +868,7 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
                     ),
                   ),
                   Text(
-                    notification.timeAgo,
+                    notification.relativeTime,
                     style: font.textStyleBuilder(
                       fontSize: 11.5,
                       color: colors.textSecondary.withValues(alpha: 0.8),
@@ -1067,6 +1091,124 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     );
   }
 
+  // --- 5. Joined Multi-column Style ---
+  Widget _buildJoinedContent(
+    NotificationModel notification,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Left Column: Time & App Name
+        SizedBox(
+          width: 54,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                notification.clockTime,
+                style: font.textStyleBuilder(
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w800,
+                  color: colors.textPrimary,
+                ),
+                maxLines: 1,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                notification.appName,
+                style: font.textStyleBuilder(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w500,
+                  color: colors.textSecondary.withValues(alpha: 0.85),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+
+        // Right Column: Avatar/Icon + Content
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _buildAppIcon(notification, size: 26, isSquircle: true),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      notification.title.isNotEmpty ? notification.title : notification.appName,
+                      style: font.textStyleBuilder(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: colors.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (notification.category != NotificationCategory.silent) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: colors.isDark
+                            ? Colors.red.withValues(alpha: 0.20)
+                            : Colors.red.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        notification.category.displayName,
+                        style: font.textStyleBuilder(
+                          fontSize: 10.0,
+                          fontWeight: FontWeight.w700,
+                          color: colors.isDark ? Colors.redAccent.shade100 : Colors.red.shade700,
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (notification.isClearable) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 6.5,
+                      height: 6.5,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: colors.activePill,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(width: 6),
+                  _buildChevron(colors),
+                ],
+              ),
+              if (notification.content.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Padding(
+                  padding: const EdgeInsets.only(left: 34),
+                  child: _buildExpandableText(
+                    text: notification.content,
+                    style: font.textStyleBuilder(
+                      fontSize: 12.5,
+                      color: colors.textSecondary.withValues(alpha: 0.90),
+                    ),
+                    collapsedMaxLines: 1,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildOtpCopyPill(
     String otp,
     ExpressiveThemeColors colors,
@@ -1207,6 +1349,29 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
           onTap: onTap,
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: colors.activePill.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              label,
+              style: font.textStyleBuilder(
+                fontSize: 12.0,
+                fontWeight: FontWeight.w600,
+                color: colors.activePill,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        );
+
+      case NotificationStyle.joined:
+        return InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
               color: colors.activePill.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(16),

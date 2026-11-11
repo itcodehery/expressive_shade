@@ -59,6 +59,7 @@ class SystemNotificationService {
         final title = map['title']?.toString() ?? '';
         final content = map['content']?.toString() ?? '';
         final timeAgo = map['timestamp']?.toString() ?? 'Now';
+        final postTime = (map['postTime'] as num?)?.toInt();
         final rawActions = map['actions'] as List<dynamic>? ?? [];
         final actions = rawActions.whereType<Map>().map((e) {
           final a = Map<String, dynamic>.from(e);
@@ -98,6 +99,7 @@ class SystemNotificationService {
           title: resolvedTitle,
           content: content,
           timeAgo: timeAgo,
+          postTime: postTime,
           appIcon: iconAndColor.icon,
           appColor: iconAndColor.color,
           appIconBytes: appIconBytes,

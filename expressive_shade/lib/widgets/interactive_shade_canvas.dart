@@ -193,16 +193,16 @@ class _InteractiveShadeCanvasState extends State<InteractiveShadeCanvas>
     final mainContent = ClipRRect(
       borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
       child: Container(
-        color: colors.background,
+        color: Colors.transparent,
         child: SafeArea(
           top: false,
           bottom: true,
           child: Column(
           children: [
             if (showStandardHeader) ...[
-              // Status Bar & System Header (Completely Opaque Top Section)
+              // Status Bar & System Header
               Container(
-                color: colors.background,
+                color: Colors.transparent,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
