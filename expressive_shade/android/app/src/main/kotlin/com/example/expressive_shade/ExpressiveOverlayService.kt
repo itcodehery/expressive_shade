@@ -146,7 +146,7 @@ class ExpressiveOverlayService : Service() {
 
         topTriggerView = View(this).apply {
             setOnTouchListener { _, event ->
-                if (ExpressiveAccessibilityService.isOverlayShowing) {
+                if (ShadeOverlayActivity.isOverlayActive() || ExpressiveAccessibilityService.isOverlayShowing) {
                     return@setOnTouchListener false
                 }
 
@@ -233,7 +233,7 @@ class ExpressiveOverlayService : Service() {
 
     fun setupTriggerBall() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
-        if (ExpressiveAccessibilityService.instance != null && ExpressiveAccessibilityService.isEnabled) {
+        if (ExpressiveAccessibilityService.instance != null) {
             removeTriggerBall()
             return
         }
@@ -245,7 +245,7 @@ class ExpressiveOverlayService : Service() {
 
         try {
             val density = resources.displayMetrics.density
-            val ballSize = (44 * density).toInt()
+            val ballSize = (48 * density).toInt()
 
             val ballParams = WindowManager.LayoutParams(
                 ballSize,
@@ -261,26 +261,26 @@ class ExpressiveOverlayService : Service() {
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                x = 0
+                x = (4 * density).toInt()
                 y = 0
             }
 
             val ballView = android.widget.FrameLayout(this).apply {
                 val circleDrawable = android.graphics.drawable.GradientDrawable().apply {
                     shape = android.graphics.drawable.GradientDrawable.OVAL
-                    setColor(0xCC2B2D30.toInt())
-                    setStroke((1.5f * density).toInt(), 0x66FFFFFF.toInt())
+                    setColor(0xEE1E1F22.toInt())
+                    setStroke((1.5f * density).toInt(), 0x66A8C7FA.toInt())
                 }
                 background = circleDrawable
-                elevation = 8f * density
+                elevation = 10f * density
 
                 val icon = android.widget.ImageView(context).apply {
-                    val chevron = android.graphics.drawable.GradientDrawable().apply {
+                    val innerDot = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.OVAL
-                        setColor(0xFFE2E2E9.toInt())
+                        setColor(0xFFD3E3FD.toInt())
                     }
-                    setImageDrawable(chevron)
-                    val iconSize = (16 * density).toInt()
+                    setImageDrawable(innerDot)
+                    val iconSize = (14 * density).toInt()
                     val lp = android.widget.FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
                     layoutParams = lp
                 }
@@ -296,7 +296,7 @@ class ExpressiveOverlayService : Service() {
                             initialY = ballParams.y
                             initialTouchY = event.rawY
                             isDrag = false
-                            v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).start()
+                            v.animate().scaleX(0.85f).scaleY(0.85f).setDuration(100).start()
                             true
                         }
                         MotionEvent.ACTION_MOVE -> {
@@ -305,7 +305,8 @@ class ExpressiveOverlayService : Service() {
                                 isDrag = true
                                 ballParams.y = initialY + deltaY
                                 try {
-                                    windowManager?.updateViewLayout(v, ballParams)
+                                    val wm = (getSystemService(Context.WINDOW_SERVICE) as? WindowManager) ?: windowManager
+                                    wm?.updateViewLayout(v, ballParams)
                                 } catch (_: Exception) {}
                             }
                             true
@@ -314,7 +315,7 @@ class ExpressiveOverlayService : Service() {
                             v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
                             if (!isDrag) {
                                 val overlayAct = ShadeOverlayActivity.currentInstance
-                                if (ExpressiveAccessibilityService.isOverlayShowing && overlayAct != null) {
+                                if (overlayAct != null && !overlayAct.isFinishing && !overlayAct.isDestroyed) {
                                     overlayAct.requestSmoothDismiss()
                                 } else {
                                     onTopSwipeTriggered("quick_settings")
@@ -328,7 +329,8 @@ class ExpressiveOverlayService : Service() {
             }
 
             triggerBallView = ballView
-            windowManager?.addView(ballView, ballParams)
+            val wm = (getSystemService(Context.WINDOW_SERVICE) as? WindowManager) ?: windowManager
+            wm?.addView(ballView, ballParams)
         } catch (_: Exception) {}
     }
 

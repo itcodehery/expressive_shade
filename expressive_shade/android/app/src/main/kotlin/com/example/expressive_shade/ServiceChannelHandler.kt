@@ -39,8 +39,11 @@ class ServiceChannelHandler(private val context: Context) : MethodChannel.Method
                 val enabled = call.argument<Boolean>("enabled") ?: true
                 ServicePrefs.setTriggerBallEnabled(context, enabled)
                 if (enabled) {
-                    ExpressiveAccessibilityService.instance?.setupTriggerBall()
-                    ExpressiveOverlayService.instance?.setupTriggerBall()
+                    if (ExpressiveAccessibilityService.instance != null) {
+                        ExpressiveAccessibilityService.instance?.setupTriggerBall()
+                    } else if (ExpressiveOverlayService.instance != null) {
+                        ExpressiveOverlayService.instance?.setupTriggerBall()
+                    }
                 } else {
                     ExpressiveAccessibilityService.instance?.removeTriggerBall()
                     ExpressiveOverlayService.instance?.removeTriggerBall()

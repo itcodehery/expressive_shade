@@ -19,6 +19,7 @@ class ShadeOverlayActivity : FlutterActivity() {
     companion object {
         var currentInstance: ShadeOverlayActivity? = null
             private set
+        fun isOverlayActive(): Boolean = currentInstance != null && !currentInstance!!.isFinishing && !currentInstance!!.isDestroyed
     }
     private var overlayChannel: MethodChannel? = null
 
@@ -168,10 +169,11 @@ class ShadeOverlayActivity : FlutterActivity() {
 
     fun requestSmoothDismiss() {
         runOnUiThread {
-            flutterEngine?.let { engine ->
+            val engine = flutterEngine ?: FlutterEngineCache.getInstance().get(ExpressiveApplication.CACHED_ENGINE_ID)
+            if (engine != null) {
                 val channel = MethodChannel(engine.dartExecutor.binaryMessenger, "com.expressive_shade/overlay_activity")
                 channel.invokeMethod("requestDismiss", null)
-            } ?: run {
+            } else {
                 finish()
             }
         }

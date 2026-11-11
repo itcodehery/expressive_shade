@@ -284,6 +284,30 @@ class ServiceTab extends StatelessWidget {
           isEnabled: state.isTriggerBallEnabled,
           onChanged: (val) {
             HapticFeedback.mediumImpact();
+            if (val && !isAccessibility && !isOverlay) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Please enable Accessibility Gesture Service or Overlay permission first so the ball can appear over apps.',
+                    style: state.selectedFont.textStyleBuilder(color: Colors.white),
+                  ),
+                  backgroundColor: colors.surface,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  action: SnackBarAction(
+                    label: 'Grant',
+                    textColor: colors.activePill,
+                    onPressed: () {
+                      if (!isAccessibility) {
+                        SystemPermissionsService.requestAccessibilityPermission();
+                      } else {
+                        SystemPermissionsService.requestOverlayPermission();
+                      }
+                    },
+                  ),
+                ),
+              );
+            }
             state.setTriggerBallEnabled(val);
           },
           state: state,

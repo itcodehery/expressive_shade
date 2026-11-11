@@ -451,11 +451,11 @@ class ShadeStateProvider extends ChangeNotifier {
 
   Future<void> refreshPermissions() async {
     _permissions = await SystemPermissionsService.checkPermissions();
+    _isTriggerBallEnabled = await SystemPermissionsService.isTriggerBallEnabled();
     if (!areCorePermissionsGranted) {
       _isServiceEnabled = false;
     } else {
       _isServiceEnabled = await SystemPermissionsService.isServiceRunning();
-      _isTriggerBallEnabled = await SystemPermissionsService.isTriggerBallEnabled();
     }
     if (_permissions['notification'] == true) {
       _loadLiveNotifications();

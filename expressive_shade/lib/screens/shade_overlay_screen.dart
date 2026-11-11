@@ -75,9 +75,7 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
           }
           state.setUnifiedQsExpanded(false);
           state.markShadeOpened();
-          if (_animController.value < 1.0) {
-            _animController.forward(from: _animController.value);
-          }
+          _animController.forward(from: _animController.value < 1.0 ? _animController.value : 0.0);
         }
       }
     });
@@ -105,18 +103,11 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       context.read<ShadeStateProvider>().flushSave();
     } catch (_) {}
 
-    const spring = SpringDescription(
-      mass: 0.9,
-      stiffness: 350.0,
-      damping: 28.0,
-    );
-    final simulation = SpringSimulation(
-      spring,
-      _animController.value,
+    _animController.animateTo(
       0.0,
-      -3.0,
-    );
-    _animController.animateWith(simulation).then((_) {
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInCubic,
+    ).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -135,18 +126,11 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
       action();
     } catch (_) {}
 
-    const spring = SpringDescription(
-      mass: 0.9,
-      stiffness: 350.0,
-      damping: 28.0,
-    );
-    final simulation = SpringSimulation(
-      spring,
-      _animController.value,
+    _animController.animateTo(
       0.0,
-      -3.0,
-    );
-    _animController.animateWith(simulation).then((_) {
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInCubic,
+    ).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {

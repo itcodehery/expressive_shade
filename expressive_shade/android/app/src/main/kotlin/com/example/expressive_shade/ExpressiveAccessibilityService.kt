@@ -28,6 +28,7 @@ class ExpressiveAccessibilityService : AccessibilityService() {
     private var topTriggerView: View? = null
     private var triggerBallView: View? = null
     private var lastTriggerTime = 0L
+    private var lastDeployTime = 0L
     private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onServiceConnected() {
@@ -37,6 +38,8 @@ class ExpressiveAccessibilityService : AccessibilityService() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         if (isEnabled) {
             setupTopGestureTrigger()
+        }
+        if (ServicePrefs.isTriggerBallEnabled(this)) {
             setupTriggerBall()
         }
     }
@@ -137,11 +140,10 @@ class ExpressiveAccessibilityService : AccessibilityService() {
         mainHandler.post {
             try {
                 removeTriggerBall()
-                if (!isEnabled) return@post
                 if (!ServicePrefs.isTriggerBallEnabled(this)) return@post
 
                 val density = resources.displayMetrics.density
-                val ballSize = (44 * density).toInt()
+                val ballSize = (48 * density).toInt()
 
                 val ballParams = WindowManager.LayoutParams(
                     ballSize,
@@ -153,27 +155,30 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.END or Gravity.CENTER_VERTICAL
-                    x = 0
+                    x = (4 * density).toInt()
                     y = 0
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
                 }
 
                 val ballView = android.widget.FrameLayout(this).apply {
                     val circleDrawable = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.OVAL
-                        setColor(0xCC2B2D30.toInt()) // Sleek translucent dark Material pill
-                        setStroke((1.5f * density).toInt(), 0x66FFFFFF.toInt()) // Subtle glass rim
+                        setColor(0xEE1E1F22.toInt()) // Deep Material Expressive pill background
+                        setStroke((1.5f * density).toInt(), 0x66A8C7FA.toInt()) // Subtle Google Blue accent border
                     }
                     background = circleDrawable
-                    elevation = 8f * density
+                    elevation = 10f * density
 
                     // Add an icon inside the ball
                     val icon = android.widget.ImageView(context).apply {
-                        val chevron = android.graphics.drawable.GradientDrawable().apply {
+                        val innerDot = android.graphics.drawable.GradientDrawable().apply {
                             shape = android.graphics.drawable.GradientDrawable.OVAL
-                            setColor(0xFFE2E2E9.toInt())
+                            setColor(0xFFD3E3FD.toInt())
                         }
-                        setImageDrawable(chevron)
-                        val iconSize = (16 * density).toInt()
+                        setImageDrawable(innerDot)
+                        val iconSize = (14 * density).toInt()
                         val lp = android.widget.FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
                         layoutParams = lp
                     }
@@ -200,11 +205,12 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                                 val deltaY = (event.rawY - initialTouchY).toInt()
                                 val dx = Math.abs(event.rawX - startX)
                                 val dy = Math.abs(event.rawY - startY)
-                                if (dy > 10 * density || dx > 10 * density) {
+                                if (dy > 8 * density || dx > 8 * density) {
                                     isDrag = true
                                     ballParams.y = initialY + deltaY
                                     try {
-                                        windowManager?.updateViewLayout(v, ballParams)
+                                        val wm = (getSystemService(Context.WINDOW_SERVICE) as? WindowManager) ?: windowManager
+                                        wm?.updateViewLayout(v, ballParams)
                                     } catch (_: Exception) {}
                                 }
                                 true
@@ -212,9 +218,9 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                             MotionEvent.ACTION_UP -> {
                                 v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
                                 if (!isDrag) {
-                                    // Toggle! If shade is open, smoothly dismiss it; otherwise open it
+                                    // Smooth toggle!
                                     val overlayAct = ShadeOverlayActivity.currentInstance
-                                    if (isOverlayShowing && overlayAct != null) {
+                                    if (overlayAct != null && !overlayAct.isFinishing && !overlayAct.isDestroyed) {
                                         overlayAct.requestSmoothDismiss()
                                     } else {
                                         performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
@@ -233,7 +239,8 @@ class ExpressiveAccessibilityService : AccessibilityService() {
                 }
 
                 triggerBallView = ballView
-                windowManager?.addView(ballView, ballParams)
+                val wm = (getSystemService(Context.WINDOW_SERVICE) as? WindowManager) ?: windowManager
+                wm?.addView(ballView, ballParams)
                 ExpressiveOverlayService.instance?.removeTriggerBall()
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -244,8 +251,9 @@ class ExpressiveAccessibilityService : AccessibilityService() {
     fun removeTriggerBall() {
         mainHandler.post {
             try {
-                if (triggerBallView != null && windowManager != null) {
-                    windowManager?.removeView(triggerBallView)
+                if (triggerBallView != null) {
+                    val wm = (getSystemService(Context.WINDOW_SERVICE) as? WindowManager) ?: windowManager
+                    wm?.removeView(triggerBallView)
                     triggerBallView = null
                 }
             } catch (_: Exception) {}
@@ -256,6 +264,8 @@ class ExpressiveAccessibilityService : AccessibilityService() {
         super.onConfigurationChanged(newConfig)
         if (isEnabled) {
             setupTopGestureTrigger()
+        }
+        if (ServicePrefs.isTriggerBallEnabled(this)) {
             setupTriggerBall()
         }
     }
@@ -266,13 +276,16 @@ class ExpressiveAccessibilityService : AccessibilityService() {
     }
 
     fun deployCustomShade(target: String) {
-        if (isOverlayShowing) return
-        isOverlayShowing = true
+        val now = System.currentTimeMillis()
+        if (now - lastDeployTime < 600) return
+        lastDeployTime = now
 
-        // Watchdog failsafe: automatically reset flag after 8 seconds
-        mainHandler.postDelayed({
-            isOverlayShowing = false
-        }, 8000)
+        val overlayAct = ShadeOverlayActivity.currentInstance
+        if (overlayAct != null && !overlayAct.isFinishing && !overlayAct.isDestroyed) {
+            return
+        }
+
+        isOverlayShowing = true
 
         val intent = Intent(this, ShadeOverlayActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or
