@@ -112,6 +112,21 @@ class SystemHardwareService {
     }
   }
 
+  static Future<bool?> setZenMode(String mode) async {
+    try {
+      final res = await _channel.invokeMethod<bool>('setZenMode', {'mode': mode});
+      return res;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> openModesSettings() async {
+    try {
+      await _channel.invokeMethod('openModesSettings');
+    } catch (_) {}
+  }
+
   static Future<bool?> toggleBatterySaver() async {
     try {
       return await _channel.invokeMethod<bool>('toggleBatterySaver');

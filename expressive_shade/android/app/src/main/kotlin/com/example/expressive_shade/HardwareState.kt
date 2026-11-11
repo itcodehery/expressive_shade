@@ -126,11 +126,13 @@ object HardwareState {
             autoRotate = (autoRotateInt == 1)
         } catch (_: Exception) {}
 
-        // 4. Do Not Disturb
+        // 4. Do Not Disturb & Interruption Filter
         var isDnd = false
+        var interruptionFilter = 1 // INTERRUPTION_FILTER_ALL
         try {
             val notifManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            isDnd = notifManager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
+            interruptionFilter = notifManager.currentInterruptionFilter
+            isDnd = interruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
         } catch (_: Exception) {}
 
         // 5. Airplane Mode
@@ -215,6 +217,7 @@ object HardwareState {
             "ringerMode" to ringerMode,
             "autoRotate" to autoRotate,
             "dnd" to isDnd,
+            "interruptionFilter" to interruptionFilter,
             "airplane" to isAirplane,
             "location" to isLocation,
             "batterySaver" to isBatterySaver,

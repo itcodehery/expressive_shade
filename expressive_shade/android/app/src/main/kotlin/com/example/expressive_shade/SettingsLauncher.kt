@@ -42,10 +42,13 @@ object SettingsLauncher {
     }
 
     /** Variant for calls that must report `false` instead of an error when launching fails. */
-    fun startQuietly(context: Context, intent: Intent): Boolean = try {
-        launchIntent(context, intent)
-        true
-    } catch (_: Exception) {
-        false
+    fun startQuietly(context: Context, vararg intents: Intent): Boolean {
+        for (intent in intents) {
+            try {
+                launchIntent(context, intent)
+                return true
+            } catch (_: Exception) {}
+        }
+        return false
     }
 }

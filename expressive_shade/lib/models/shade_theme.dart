@@ -187,6 +187,8 @@ class CustomThemeData {
   final double cardOpacity;
   final double blurIntensity;
   final Color? customBackground;
+  final double backgroundOpacity;
+  final double backgroundBlur;
   final Color? customActivePill;
   final Color? customInactivePill;
   final Color? customAccent;
@@ -197,6 +199,8 @@ class CustomThemeData {
     this.cardOpacity = 1.0,
     this.blurIntensity = 0.0,
     this.customBackground,
+    this.backgroundOpacity = 1.0,
+    this.backgroundBlur = 0.0,
     this.customActivePill,
     this.customInactivePill,
     this.customAccent,
@@ -208,6 +212,8 @@ class CustomThemeData {
     double? cardOpacity,
     double? blurIntensity,
     Color? customBackground,
+    double? backgroundOpacity,
+    double? backgroundBlur,
     Color? customActivePill,
     Color? customInactivePill,
     Color? customAccent,
@@ -218,6 +224,8 @@ class CustomThemeData {
       cardOpacity: cardOpacity ?? this.cardOpacity,
       blurIntensity: blurIntensity ?? this.blurIntensity,
       customBackground: customBackground ?? this.customBackground,
+      backgroundOpacity: backgroundOpacity ?? this.backgroundOpacity,
+      backgroundBlur: backgroundBlur ?? this.backgroundBlur,
       customActivePill: customActivePill ?? this.customActivePill,
       customInactivePill: customInactivePill ?? this.customInactivePill,
       customAccent: customAccent ?? this.customAccent,

@@ -36,6 +36,8 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
   late Color _inactivePillColor;
   late Color _accentColor;
   late bool _isAmoled;
+  late double _backgroundOpacity;
+  late double _backgroundBlur;
   ThemeColorRole _selectedRole = ThemeColorRole.background;
 
   late TextEditingController _hexController;
@@ -75,6 +77,8 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
     super.initState();
     final current = context.read<ShadeStateProvider>().customTheme;
     _isAmoled = current.isAmoled;
+    _backgroundOpacity = current.backgroundOpacity;
+    _backgroundBlur = current.backgroundBlur;
     _backgroundColor = current.customBackground ??
         (_isAmoled ? Colors.black : const Color(0xFF141416));
     _activePillColor = current.customActivePill ?? current.primaryColor;
@@ -196,6 +200,8 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
       cardOpacity: 1.0,
       blurIntensity: 0.0,
       customBackground: _isAmoled ? Colors.black : _backgroundColor,
+      backgroundOpacity: _backgroundOpacity,
+      backgroundBlur: _backgroundBlur,
       customActivePill: _activePillColor,
       customInactivePill: _inactivePillColor,
       customAccent: _accentColor,
@@ -743,6 +749,96 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                 },
               ),
               const SizedBox(height: 16),
+
+              // Background Alpha / Opacity Slider
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'BACKGROUND OPACITY (ALPHA)',
+                    style: state.selectedFont.textStyleBuilder(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    '${(_backgroundOpacity * 100).toInt()}%',
+                    style: state.selectedFont.textStyleBuilder(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: colors.activePill,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              SliderTheme(
+                data: SliderThemeData(
+                  trackHeight: 12,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                  activeTrackColor: colors.activePill,
+                  inactiveTrackColor: colors.inactivePill.withValues(alpha: 0.35),
+                  thumbColor: colors.activePill,
+                  overlayColor: colors.activePill.withValues(alpha: 0.2),
+                ),
+                child: Slider(
+                  value: _backgroundOpacity,
+                  min: 0.1,
+                  max: 1.0,
+                  onChanged: (v) {
+                    setState(() {
+                      _backgroundOpacity = v;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Background Blur Slider
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'BACKGROUND FROSTED BLUR',
+                    style: state.selectedFont.textStyleBuilder(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: colors.textSecondary,
+                    ),
+                  ),
+                  Text(
+                    _backgroundBlur == 0 ? 'Off' : '${_backgroundBlur.toInt()}px',
+                    style: state.selectedFont.textStyleBuilder(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: colors.activePill,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              SliderTheme(
+                data: SliderThemeData(
+                  trackHeight: 12,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 10),
+                  activeTrackColor: colors.activePill,
+                  inactiveTrackColor: colors.inactivePill.withValues(alpha: 0.35),
+                  thumbColor: colors.activePill,
+                  overlayColor: colors.activePill.withValues(alpha: 0.2),
+                ),
+                child: Slider(
+                  value: _backgroundBlur,
+                  min: 0.0,
+                  max: 40.0,
+                  onChanged: (v) {
+                    setState(() {
+                      _backgroundBlur = v;
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
             ],
 
             // Apply Button
@@ -765,6 +861,8 @@ class _CustomThemeBuilderSheetState extends State<CustomThemeBuilderSheet> {
                     cardOpacity: 1.0,
                     blurIntensity: 0.0,
                     customBackground: _isAmoled ? Colors.black : _backgroundColor,
+                    backgroundOpacity: _backgroundOpacity,
+                    backgroundBlur: _backgroundBlur,
                     customActivePill: _activePillColor,
                     customInactivePill: _inactivePillColor,
                     customAccent: _accentColor,

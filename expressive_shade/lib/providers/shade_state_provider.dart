@@ -442,6 +442,9 @@ class ShadeStateProvider extends ChangeNotifier {
   bool _isServiceEnabled = false;
   bool get isServiceEnabled => _isServiceEnabled;
 
+  bool _isTriggerBallEnabled = true;
+  bool get isTriggerBallEnabled => _isTriggerBallEnabled;
+
   bool get areCorePermissionsGranted =>
       (_permissions['overlay'] ?? false) &&
       (_permissions['accessibility'] ?? false);
@@ -452,11 +455,18 @@ class ShadeStateProvider extends ChangeNotifier {
       _isServiceEnabled = false;
     } else {
       _isServiceEnabled = await SystemPermissionsService.isServiceRunning();
+      _isTriggerBallEnabled = await SystemPermissionsService.isTriggerBallEnabled();
     }
     if (_permissions['notification'] == true) {
       _loadLiveNotifications();
       _loadLiveMedia();
     }
+    notifyListeners();
+  }
+
+  Future<void> setTriggerBallEnabled(bool enabled) async {
+    _isTriggerBallEnabled = enabled;
+    await SystemPermissionsService.setTriggerBallEnabled(enabled);
     notifyListeners();
   }
 
@@ -589,6 +599,11 @@ class ShadeStateProvider extends ChangeNotifier {
       _updateTile(
         'dnd',
         (t) => t.copyWith(isActive: on, subtitle: on ? 'On' : 'Off'),
+      );
+      // Also update Modes tile state if present
+      _updateTile(
+        'modes',
+        (t) => t.copyWith(isActive: on, subtitle: on ? 'Focus' : 'Normal'),
       );
     }
 
@@ -1016,25 +1031,79 @@ class ShadeStateProvider extends ChangeNotifier {
           isActive: newActive,
           subtitle: newActive ? 'On' : 'Off',
         );
-        SystemHardwareService.toggleDnd();
+        SystemHardwareService.toggleDnd().then((res) {
+          if (res != null) {
+            _updateTile('dnd', (t) => t.copyWith(isActive: res, subtitle: res ? 'On' : 'Off'));
+            _updateTile('modes', (t) => t.copyWith(isActive: res, subtitle: res ? 'Focus' : 'Normal'));
+            notifyListeners();
+          }
+        });
       } else if (id == 'battery_saver') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
           subtitle: newActive ? 'Active' : 'Off',
         );
-        SystemHardwareService.toggleBatterySaver();
+        SystemHardwareService.toggleBatterySaver().then((res) {
+          if (res != null) {
+            _updateTile('battery_saver', (t) => t.copyWith(isActive: res, subtitle: res ? 'Active' : 'Off'));
+            notifyListeners();
+          }
+        });
       } else if (id == 'airplane') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
           subtitle: newActive ? 'On' : 'Off',
         );
-        SystemHardwareService.toggleAirplane();
+        SystemHardwareService.toggleAirplane().then((res) {
+          if (res != null) {
+            _updateTile('airplane', (t) => t.copyWith(isActive: res, subtitle: res ? 'On' : 'Off'));
+            notifyListeners();
+          }
+        });
       } else if (id == 'hotspot') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
           subtitle: newActive ? 'Sharing' : 'Off',
         );
-        SystemHardwareService.toggleHotspot();
+        SystemHardwareService.toggleHotspot().then((res) {
+          if (res != null) {
+            _updateTile('hotspot', (t) => t.copyWith(isActive: res, subtitle: res ? 'Sharing' : 'Off'));
+            notifyListeners();
+          }
+        });
+      } else if (id == 'modes') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Focus' : 'Normal',
+        );
+        if (newActive) {
+          SystemHardwareService.setZenMode('focus').then((res) {
+            if (res == true) {
+              _updateTile('modes', (t) => t.copyWith(isActive: true, subtitle: 'Focus'));
+              _updateTile('dnd', (t) => t.copyWith(isActive: true, subtitle: 'On'));
+              notifyListeners();
+            }
+          });
+        } else {
+          SystemHardwareService.setZenMode('normal').then((res) {
+            if (res == true) {
+              _updateTile('modes', (t) => t.copyWith(isActive: false, subtitle: 'Normal'));
+              _updateTile('dnd', (t) => t.copyWith(isActive: false, subtitle: 'Off'));
+              notifyListeners();
+            }
+          });
+        }
+      } else if (id == 'night_light') {
+        _tiles[index] = tile.copyWith(
+          isActive: newActive,
+          subtitle: newActive ? 'Warm' : 'Off',
+        );
+        SystemHardwareService.toggleNightLight().then((res) {
+          if (res != null) {
+            _updateTile('night_light', (t) => t.copyWith(isActive: res, subtitle: res ? 'Warm' : 'Off'));
+            notifyListeners();
+          }
+        });
       } else if (id == 'cast') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,
@@ -1061,12 +1130,6 @@ class ShadeStateProvider extends ChangeNotifier {
           subtitle: newActive ? 'Precise' : 'Off',
         );
         SystemHardwareService.toggleLocation();
-      } else if (id == 'night_light') {
-        _tiles[index] = tile.copyWith(
-          isActive: newActive,
-          subtitle: newActive ? 'Warm' : 'Off',
-        );
-        SystemHardwareService.toggleNightLight();
       } else if (id == 'nfc') {
         _tiles[index] = tile.copyWith(
           isActive: newActive,

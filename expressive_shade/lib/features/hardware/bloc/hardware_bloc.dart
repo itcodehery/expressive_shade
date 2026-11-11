@@ -175,10 +175,17 @@ class HardwareBloc extends Bloc<HardwareEvent, HardwareState> {
       SystemHardwareService.openQrScanner();
     } else if (tile.id == 'location') {
       updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Precise' : 'Off');
-      SystemHardwareService.openLocationSettings();
+      SystemHardwareService.toggleLocation();
     } else if (tile.id == 'night_light') {
       updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Warm' : 'Off');
-      SystemHardwareService.openNightLightSettings();
+      SystemHardwareService.toggleNightLight();
+    } else if (tile.id == 'modes') {
+      updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'Focus' : 'Normal');
+      if (newActive) {
+        SystemHardwareService.setZenMode('focus');
+      } else {
+        SystemHardwareService.setZenMode('normal');
+      }
     } else if (tile.id == 'nfc') {
       updated[index] = tile.copyWith(isActive: newActive, subtitle: newActive ? 'On' : 'Off');
       SystemHardwareService.openNfcSettings();

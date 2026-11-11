@@ -28,6 +28,8 @@ class ServiceTab extends StatelessWidget {
     final isAccessibility = permissions['accessibility'] ?? false;
     final isNotification = permissions['notification'] ?? false;
     final isWriteSettings = permissions['writeSettings'] ?? false;
+    final isDndPolicy = permissions['dndPolicy'] ?? false;
+    final isWriteSecure = permissions['writeSecureSettings'] ?? false;
     final canEnable = state.areCorePermissionsGranted;
 
     return ListView(
@@ -208,6 +210,57 @@ class ServiceTab extends StatelessWidget {
         ),
         const SizedBox(height: 12),
 
+        // 4b. Do Not Disturb Policy Access
+        _buildPermissionItem(
+          icon: Icons.do_not_disturb_on_rounded,
+          title: 'Do Not Disturb Policy Access',
+          description: 'Required to toggle DnD and switch Zen Modes (Focus, Normal, Bedtime) directly from the shade.',
+          isGranted: isDndPolicy,
+          onTap: () => SystemPermissionsService.requestDndPolicyPermission(),
+          state: state,
+          colors: colors,
+        ),
+        const SizedBox(height: 24),
+
+        // Section Title: Advanced Privileges (Shizuku & ADB)
+        Text(
+          'Advanced Tile Privileges (Shizuku / ADB)',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Modern Android strictly locks Airplane Mode, Battery Saver, Mobile Hotspot, and Night Light behind system-level permissions. You can unlock 100% silent 1-tap toggling using Shizuku or a one-time ADB command.',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 13,
+            color: colors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // Shizuku / Secure Settings Card
+        _buildShizukuStatusCard(
+          context: context,
+          isGranted: isWriteSecure,
+          state: state,
+          colors: colors,
+        ),
+        const SizedBox(height: 24),
+
+        // Section Title: Features & Automations
+        Text(
+          'Features & Automations',
+          style: state.selectedFont.textStyleBuilder(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: colors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 14),
+
         // 5. Smart Notification Classifier Toggle
         _buildClassifierToggleItem(
           title: 'Smart Notification Classifier',
@@ -216,6 +269,22 @@ class ServiceTab extends StatelessWidget {
           onChanged: (val) {
             HapticFeedback.mediumImpact();
             state.setSmartClassifierEnabled(val);
+          },
+          state: state,
+          colors: colors,
+        ),
+        const SizedBox(height: 12),
+
+        // 6. Accessibility Trigger Ball Toggle
+        _buildSettingToggleItem(
+          icon: Icons.touch_app_rounded,
+          title: 'Accessibility Floating Edge Ball',
+          description: 'Adds a small draggable ball to the edge of the screen that directly and smoothly expands the shade when tapped.',
+          badge: 'Accessibility',
+          isEnabled: state.isTriggerBallEnabled,
+          onChanged: (val) {
+            HapticFeedback.mediumImpact();
+            state.setTriggerBallEnabled(val);
           },
           state: state,
           colors: colors,
@@ -478,6 +547,283 @@ class ServiceTab extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingToggleItem({
+    required IconData icon,
+    required String title,
+    required String description,
+    required String badge,
+    required bool isEnabled,
+    required ValueChanged<bool> onChanged,
+    required ShadeStateProvider state,
+    required ExpressiveThemeColors colors,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: isEnabled
+                  ? colors.activePill.withValues(alpha: 0.18)
+                  : colors.inactivePill.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              icon,
+              size: 22,
+              color: isEnabled ? colors.activePill : colors.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: colors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: isEnabled
+                            ? colors.activePill.withValues(alpha: 0.18)
+                            : colors.inactivePill.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        isEnabled ? 'Enabled' : 'Disabled',
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: isEnabled ? colors.activePill : colors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: state.selectedFont.textStyleBuilder(
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.accessibility_new_rounded,
+                      size: 13,
+                      color: isEnabled ? colors.activePill : colors.textSecondary,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      badge,
+                      style: state.selectedFont.textStyleBuilder(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: isEnabled ? colors.activePill : colors.textSecondary,
+                      ),
+                    ),
+                    const Spacer(),
+                    M3ESwitch(
+                      value: isEnabled,
+                      onChanged: onChanged,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShizukuStatusCard({
+    required BuildContext context,
+    required bool isGranted,
+    required ShadeStateProvider state,
+    required ExpressiveThemeColors colors,
+  }) {
+    const adbCommand = 'adb shell pm grant com.example.expressive_shade android.permission.WRITE_SECURE_SETTINGS';
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isGranted
+              ? Colors.green.withValues(alpha: 0.3)
+              : colors.activePill.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: isGranted
+                      ? Colors.green.withValues(alpha: 0.18)
+                      : colors.activePill.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  isGranted ? Icons.verified_user_rounded : Icons.terminal_rounded,
+                  size: 24,
+                  color: isGranted ? Colors.greenAccent.shade700 : colors.activePill,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            isGranted ? 'Shizuku / ADB Privileges Active' : 'Shizuku / ADB Required',
+                            style: state.selectedFont.textStyleBuilder(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: isGranted
+                                ? Colors.green.withValues(alpha: 0.18)
+                                : Colors.amber.withValues(alpha: 0.18),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            isGranted ? 'Unlocked' : 'Optional',
+                            style: state.selectedFont.textStyleBuilder(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isGranted ? Colors.greenAccent.shade700 : Colors.amber.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      isGranted
+                          ? 'All Quick Settings tiles (Hotspot, Airplane, Battery Saver, Night Light) can now toggle silently.'
+                          : 'Without this, tapping Airplane Mode, Hotspot, or Battery Saver opens their respective system setting panels instead of direct silent toggling.',
+                      style: state.selectedFont.textStyleBuilder(
+                        fontSize: 12,
+                        color: colors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (!isGranted) ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.code_rounded, size: 14, color: colors.textSecondary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Run once via Computer or Shizuku runner:',
+                        style: state.selectedFont.textStyleBuilder(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: colors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  SelectableText(
+                    adbCommand,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 11,
+                      color: Color(0xFF80CBC4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: colors.activePill,
+                    side: BorderSide(color: colors.activePill.withValues(alpha: 0.4)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  ),
+                  onPressed: () {
+                    HapticFeedback.lightImpact();
+                    Clipboard.setData(const ClipboardData(text: adbCommand));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('ADB command copied to clipboard!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 16),
+                  label: Text(
+                    'Copy Command',
+                    style: state.selectedFont.textStyleBuilder(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: colors.activePill,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

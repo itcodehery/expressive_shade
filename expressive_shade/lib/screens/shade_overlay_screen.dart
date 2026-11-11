@@ -1,6 +1,9 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import '../models/shade_theme.dart';
 import '../providers/shade_state_provider.dart';
 import '../theme/m3_expressive_theme.dart';
 import '../widgets/interactive_shade_canvas.dart';
@@ -35,8 +38,8 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
 
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 230),
-      reverseDuration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 320),
+      reverseDuration: const Duration(milliseconds: 240),
     );
 
     _slideAnimation = Tween<Offset>(
@@ -45,8 +48,8 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     ).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: Curves.easeOutCubic,
-        reverseCurve: Curves.easeOutQuad,
+        curve: const Cubic(0.05, 0.7, 0.1, 1.0), // Expressive overshoot deceleration
+        reverseCurve: Curves.easeInCubic,
       ),
     );
 
@@ -58,7 +61,11 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     _animController.forward(from: 0.0);
 
     _overlayChannel.setMethodCallHandler((call) async {
-      if (call.method == 'onPanelTargetChanged' || call.method == 'reloadSettings') {
+      if (call.method == 'requestDismiss') {
+        if (mounted) {
+          _dismissOverlay();
+        }
+      } else if (call.method == 'onPanelTargetChanged' || call.method == 'reloadSettings') {
         final target = call.arguments?.toString();
         if (mounted) {
           _isDismissing = false;
@@ -97,7 +104,19 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     try {
       context.read<ShadeStateProvider>().flushSave();
     } catch (_) {}
-    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInQuad).then((_) {
+
+    const spring = SpringDescription(
+      mass: 0.9,
+      stiffness: 350.0,
+      damping: 28.0,
+    );
+    final simulation = SpringSimulation(
+      spring,
+      _animController.value,
+      0.0,
+      -3.0,
+    );
+    _animController.animateWith(simulation).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -115,7 +134,19 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
     try {
       action();
     } catch (_) {}
-    _animController.animateTo(0.0, duration: const Duration(milliseconds: 150), curve: Curves.easeInQuad).then((_) {
+
+    const spring = SpringDescription(
+      mass: 0.9,
+      stiffness: 350.0,
+      damping: 28.0,
+    );
+    final simulation = SpringSimulation(
+      spring,
+      _animController.value,
+      0.0,
+      -3.0,
+    );
+    _animController.animateWith(simulation).then((_) {
       try {
         _overlayChannel.invokeMethod('dismissOverlay');
       } catch (_) {
@@ -133,23 +164,40 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
 
   void _handleShadeDragEnd(double velocity) {
     if (_isDismissing) return;
-    if (velocity < -120 || _animController.value < 0.75) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final normalizedVelocity = velocity / screenHeight;
+
+    if (velocity < -300 || _animController.value < 0.65) {
       _dismissOverlay();
     } else {
-      _animController.animateTo(1.0, curve: Curves.easeOutCubic, duration: const Duration(milliseconds: 150));
+      const spring = SpringDescription(
+        mass: 0.85,
+        stiffness: 320.0,
+        damping: 26.0,
+      );
+      final simulation = SpringSimulation(
+        spring,
+        _animController.value,
+        1.0,
+        normalizedVelocity.clamp(-10.0, 10.0),
+      );
+      _animController.animateWith(simulation);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final themeColors = context.select<ShadeStateProvider, ExpressiveThemeColors>(
-      (state) => ExpressiveThemeColors.fromSettings(
-        source: state.themeSource,
-        preset: state.selectedPreset,
-        custom: state.customTheme,
-        systemMonetColor: state.systemMonetColor,
-      ),
+    final state = context.watch<ShadeStateProvider>();
+    final themeColors = ExpressiveThemeColors.fromSettings(
+      source: state.themeSource,
+      preset: state.selectedPreset,
+      custom: state.customTheme,
+      systemMonetColor: state.systemMonetColor,
     );
+
+    final bgBlur = state.themeSource == ThemeSource.custom
+        ? state.customTheme.backgroundBlur
+        : 0.0;
 
     return PopScope(
       canPop: false,
@@ -178,48 +226,94 @@ class _ShadeOverlayScreenState extends State<ShadeOverlayScreen>
               position: _slideAnimation,
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(36)),
-                child: Container(
-                  width: double.infinity,
-                  height: double.infinity,
-                  color: themeColors.background,
-                  child: Stack(
-                    children: [
-                      // Full-Height Interactive Shade Canvas
-                      Positioned.fill(
-                        child: RepaintBoundary(
-                          child: InteractiveShadeCanvas(
-                            colors: themeColors,
-                            onDismissAndExecute: _dismissOverlayAndExecute,
-                            onDragShadeUpdate: _handleShadeDragUpdate,
-                            onDragShadeEnd: _handleShadeDragEnd,
+                child: bgBlur > 0
+                    ? BackdropFilter(
+                        filter: ui.ImageFilter.blur(sigmaX: bgBlur, sigmaY: bgBlur),
+                        child: Container(
+                          width: double.infinity,
+                          height: double.infinity,
+                          color: themeColors.background,
+                          child: Stack(
+                            children: [
+                              // Full-Height Interactive Shade Canvas
+                              Positioned.fill(
+                                child: RepaintBoundary(
+                                  child: InteractiveShadeCanvas(
+                                    colors: themeColors,
+                                    onDismissAndExecute: _dismissOverlayAndExecute,
+                                    onDragShadeUpdate: _handleShadeDragUpdate,
+                                    onDragShadeEnd: _handleShadeDragEnd,
+                                  ),
+                                ),
+                              ),
+                              // Bottom drag gesture area (Indicator hidden as requested)
+                              Positioned(
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.translucent,
+                                  onTap: _dismissOverlay,
+                                  onVerticalDragUpdate: (details) {
+                                    _handleShadeDragUpdate(details.delta.dy);
+                                  },
+                                  onVerticalDragEnd: (details) {
+                                    final velocity = details.primaryVelocity ?? 0;
+                                    _handleShadeDragEnd(velocity);
+                                  },
+                                  child: Container(
+                                    width: double.infinity,
+                                    height: 24,
+                                    color: Colors.transparent,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
-                      // Bottom drag gesture area (Indicator hidden as requested)
-                      Positioned(
-                        bottom: 0,
-                        left: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.translucent,
-                          onTap: _dismissOverlay,
-                          onVerticalDragUpdate: (details) {
-                            _handleShadeDragUpdate(details.delta.dy);
-                          },
-                          onVerticalDragEnd: (details) {
-                            final velocity = details.primaryVelocity ?? 0;
-                            _handleShadeDragEnd(velocity);
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            height: 24,
-                            color: Colors.transparent,
-                          ),
+                      )
+                    : Container(
+                        width: double.infinity,
+                        height: double.infinity,
+                        color: themeColors.background,
+                        child: Stack(
+                          children: [
+                            // Full-Height Interactive Shade Canvas
+                            Positioned.fill(
+                              child: RepaintBoundary(
+                                child: InteractiveShadeCanvas(
+                                  colors: themeColors,
+                                  onDismissAndExecute: _dismissOverlayAndExecute,
+                                  onDragShadeUpdate: _handleShadeDragUpdate,
+                                  onDragShadeEnd: _handleShadeDragEnd,
+                                ),
+                              ),
+                            ),
+                            // Bottom drag gesture area (Indicator hidden as requested)
+                            Positioned(
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              child: GestureDetector(
+                                behavior: HitTestBehavior.translucent,
+                                onTap: _dismissOverlay,
+                                onVerticalDragUpdate: (details) {
+                                  _handleShadeDragUpdate(details.delta.dy);
+                                },
+                                onVerticalDragEnd: (details) {
+                                  final velocity = details.primaryVelocity ?? 0;
+                                  _handleShadeDragEnd(velocity);
+                                },
+                                child: Container(
+                                  width: double.infinity,
+                                  height: 24,
+                                  color: Colors.transparent,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
               ),
             ),
           ],

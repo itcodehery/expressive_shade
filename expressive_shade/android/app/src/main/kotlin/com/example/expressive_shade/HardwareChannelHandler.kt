@@ -48,6 +48,13 @@ class HardwareChannelHandler(
             "toggleNfc" -> toggleNfc(result)
             "toggleMobileData" -> toggleMobileData(result)
             "toggleDataSaver" -> toggleDataSaver(result)
+            "setZenMode" -> setZenMode(call, result)
+            "openModesSettings" -> open(
+                result,
+                { Intent("android.settings.ZEN_MODE_SETTINGS") },
+                { Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS) },
+                { Intent(Settings.ACTION_SOUND_SETTINGS) }
+            )
             "triggerCast", "openCastSettings" -> open(
                 result,
                 { Intent("android.settings.CAST_SETTINGS") },
@@ -183,20 +190,53 @@ class HardwareChannelHandler(
             val btManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             val adapter = btManager?.adapter ?: BluetoothAdapter.getDefaultAdapter()
             if (adapter != null) {
-                var toggled = false
-                try {
-                    val current = if (adapter.isEnabled) 1 else 0
-                    val target = if (current == 1) 0 else 1
-                    Settings.Global.putInt(context.contentResolver, "bluetooth_on", target)
-                    toggled = true
-                } catch (_: Exception) {}
+                if (adapter.isEnabled) {
+                    // Modern Android prohibits disabling Bluetooth directly for 3rd-party apps.
+                    // Attempt Global write if WRITE_SECURE_SETTINGS is present.
+                    var disabled = false
+                    try {
+                        Settings.Global.putInt(context.contentResolver, "bluetooth_on", 0)
+                        disabled = true
+                    } catch (_: Exception) {}
 
-                if (!toggled) {
-                    @Suppress("DEPRECATION")
-                    toggled = if (adapter.isEnabled) adapter.disable() else adapter.enable()
+                    if (!disabled) {
+                        try {
+                            @Suppress("DEPRECATION")
+                            disabled = adapter.disable()
+                        } catch (_: Exception) {}
+                    }
+
+                    if (!disabled) {
+                        // Open bluetooth settings or quick panel if programmatic disable is blocked
+                        SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                    }
+                    onStateChanged()
+                    result.success(disabled)
+                } else {
+                    // To turn ON: try programmatic first, then launch system prompt
+                    var enabled = false
+                    try {
+                        Settings.Global.putInt(context.contentResolver, "bluetooth_on", 1)
+                        enabled = true
+                    } catch (_: Exception) {}
+
+                    if (!enabled) {
+                        try {
+                            @Suppress("DEPRECATION")
+                            enabled = adapter.enable()
+                        } catch (_: Exception) {}
+                    }
+
+                    if (!enabled) {
+                        // Launch the system permission consent request dialog (doesn't kick user out to settings)
+                        val enableIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        SettingsLauncher.startQuietly(context, enableIntent)
+                    }
+                    onStateChanged()
+                    result.success(true)
                 }
-                onStateChanged()
-                result.success(toggled)
             } else {
                 result.success(false)
             }
@@ -333,8 +373,42 @@ class HardwareChannelHandler(
                 result.success(!isDndOn)
             } else {
                 SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
-                result.success(false)
+                result.success(null) // Return null so client knows permission is required
             }
+        } catch (e: Exception) {
+            result.error("ERROR", e.message, null)
+        }
+    }
+
+    private fun setZenMode(call: MethodCall, result: MethodChannel.Result) {
+        try {
+            val mode = call.argument<String>("mode") ?: "normal"
+            val notifManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            if (!notifManager.isNotificationPolicyAccessGranted) {
+                SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+                result.success(false)
+                return
+            }
+
+            when (mode.lowercase()) {
+                "dnd", "priority" -> {
+                    notifManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                }
+                "alarms", "sleep", "bedtime" -> {
+                    notifManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS)
+                }
+                "silent", "none" -> {
+                    notifManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                }
+                "work", "focus" -> {
+                    notifManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                }
+                else -> {
+                    notifManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+                }
+            }
+            onStateChanged()
+            result.success(true)
         } catch (e: Exception) {
             result.error("ERROR", e.message, null)
         }
@@ -345,10 +419,23 @@ class HardwareChannelHandler(
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
             val isCurrentlyOn = powerManager?.isPowerSaveMode == true
             val target = if (isCurrentlyOn) 0 else 1
-            Settings.Global.putInt(context.contentResolver, "low_power", target)
-            onStateChanged()
-            result.success(target == 1)
+            
+            var success = false
+            try {
+                // Try writing global low_power setting (works if WRITE_SECURE_SETTINGS granted)
+                success = Settings.Global.putInt(context.contentResolver, "low_power", target)
+            } catch (_: Exception) {}
+
+            if (!success) {
+                // Open Battery Saver settings directly so user can toggle in 1 tap
+                SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
+                result.success(null)
+            } else {
+                onStateChanged()
+                result.success(target == 1)
+            }
         } catch (_: Exception) {
+            SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS))
             result.success(null)
         }
     }
@@ -357,26 +444,83 @@ class HardwareChannelHandler(
         try {
             val current = Settings.Global.getInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, 0)
             val newState = if (current == 1) 0 else 1
-            Settings.Global.putInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, newState)
-            val intent = Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).apply { putExtra("state", newState == 1) }
-            context.sendBroadcast(intent)
-            onStateChanged()
-            result.success(newState == 1)
+            
+            var success = false
+            try {
+                success = Settings.Global.putInt(context.contentResolver, Settings.Global.AIRPLANE_MODE_ON, newState)
+                if (success) {
+                    val intent = Intent(Intent.ACTION_AIRPLANE_MODE_CHANGED).apply { putExtra("state", newState == 1) }
+                    context.sendBroadcast(intent)
+                }
+            } catch (_: Exception) {}
+
+            if (!success) {
+                // Open Airplane mode settings/panel cleanly
+                SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS))
+                result.success(null)
+            } else {
+                onStateChanged()
+                result.success(newState == 1)
+            }
         } catch (_: Exception) {
+            SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS))
             result.success(null)
         }
     }
 
     private fun toggleHotspot(result: MethodChannel.Result) {
         try {
+            var toggled = false
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val method = wifiManager.javaClass.getDeclaredMethod("isWifiApEnabled")
-            val isEnabled = method.invoke(wifiManager) as? Boolean ?: false
-            val setMethod = wifiManager.javaClass.getDeclaredMethod("setWifiApEnabled", null, Boolean::class.javaPrimitiveType)
-            setMethod.invoke(wifiManager, null, !isEnabled)
-            onStateChanged()
-            result.success(!isEnabled)
+            try {
+                val method = wifiManager.javaClass.getDeclaredMethod("isWifiApEnabled")
+                val isEnabled = method.invoke(wifiManager) as? Boolean ?: false
+                val setMethod = wifiManager.javaClass.getDeclaredMethod("setWifiApEnabled", null, Boolean::class.javaPrimitiveType)
+                setMethod.invoke(wifiManager, null, !isEnabled)
+                toggled = true
+                onStateChanged()
+                result.success(!isEnabled)
+                return
+            } catch (_: Exception) {}
+
+            // In Android 11+, apps without TETHER_PRIVILEGED cannot silently toggle Wi-Fi Hotspot.
+            // Launch Tethering Settings or Wireless settings cleanly.
+            SettingsLauncher.startQuietly(
+                context,
+                Intent("android.settings.TETHER_SETTINGS").apply {
+                    addCategory(Intent.CATEGORY_DEFAULT)
+                }
+            )
+            result.success(null)
         } catch (_: Exception) {
+            SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_WIRELESS_SETTINGS))
+            result.success(null)
+        }
+    }
+
+    private fun toggleNightLight(result: MethodChannel.Result) {
+        try {
+            val current = Settings.Secure.getInt(context.contentResolver, "night_display_activated", 0)
+            val target = if (current == 1) 0 else 1
+            var success = false
+            try {
+                success = Settings.Secure.putInt(context.contentResolver, "night_display_activated", target)
+            } catch (_: Exception) {}
+
+            if (!success) {
+                // Open display settings / night light settings
+                SettingsLauncher.startQuietly(
+                    context,
+                    Intent("android.settings.NIGHT_DISPLAY_SETTINGS"),
+                    Intent(Settings.ACTION_DISPLAY_SETTINGS)
+                )
+                result.success(null)
+            } else {
+                onStateChanged()
+                result.success(target == 1)
+            }
+        } catch (_: Exception) {
+            SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_DISPLAY_SETTINGS))
             result.success(null)
         }
     }
@@ -385,9 +529,22 @@ class HardwareChannelHandler(
         try {
             val current = Settings.Secure.getInt(context.contentResolver, "reduce_bright_colors_activated", 0)
             val newState = if (current == 1) 0 else 1
-            Settings.Secure.putInt(context.contentResolver, "reduce_bright_colors_activated", newState)
-            onStateChanged()
-            result.success(newState == 1)
+            var success = false
+            try {
+                success = Settings.Secure.putInt(context.contentResolver, "reduce_bright_colors_activated", newState)
+            } catch (_: Exception) {}
+
+            if (!success) {
+                SettingsLauncher.startQuietly(
+                    context,
+                    Intent("android.settings.REDUCE_BRIGHT_COLORS_SETTINGS"),
+                    Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                )
+                result.success(null)
+            } else {
+                onStateChanged()
+                result.success(newState == 1)
+            }
         } catch (_: Exception) {
             result.success(null)
         }
@@ -398,22 +555,20 @@ class HardwareChannelHandler(
             val locManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
             val isEnabled = locManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
             val newMode = if (isEnabled) Settings.Secure.LOCATION_MODE_OFF else Settings.Secure.LOCATION_MODE_HIGH_ACCURACY
-            Settings.Secure.putInt(context.contentResolver, Settings.Secure.LOCATION_MODE, newMode)
-            onStateChanged()
-            result.success(!isEnabled)
-        } catch (_: Exception) {
-            result.success(null)
-        }
-    }
+            var success = false
+            try {
+                success = Settings.Secure.putInt(context.contentResolver, Settings.Secure.LOCATION_MODE, newMode)
+            } catch (_: Exception) {}
 
-    private fun toggleNightLight(result: MethodChannel.Result) {
-        try {
-            val current = Settings.Secure.getInt(context.contentResolver, "night_display_activated", 0)
-            val target = if (current == 1) 0 else 1
-            Settings.Secure.putInt(context.contentResolver, "night_display_activated", target)
-            onStateChanged()
-            result.success(target == 1)
+            if (!success) {
+                SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                result.success(null)
+            } else {
+                onStateChanged()
+                result.success(!isEnabled)
+            }
         } catch (_: Exception) {
+            SettingsLauncher.startQuietly(context, Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
             result.success(null)
         }
     }

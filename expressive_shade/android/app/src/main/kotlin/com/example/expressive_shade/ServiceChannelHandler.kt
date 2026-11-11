@@ -21,6 +21,7 @@ class ServiceChannelHandler(private val context: Context) : MethodChannel.Method
                 }
                 ExpressiveAccessibilityService.isEnabled = true
                 ExpressiveAccessibilityService.instance?.setupTopGestureTrigger()
+                ExpressiveAccessibilityService.instance?.setupTriggerBall()
                 result.success(true)
             }
             "stopOverlayService" -> {
@@ -28,9 +29,24 @@ class ServiceChannelHandler(private val context: Context) : MethodChannel.Method
                 context.stopService(Intent(context, ExpressiveOverlayService::class.java))
                 ExpressiveAccessibilityService.isEnabled = false
                 ExpressiveAccessibilityService.instance?.removeTopGestureTrigger()
+                ExpressiveAccessibilityService.instance?.removeTriggerBall()
+                ExpressiveOverlayService.instance?.removeTriggerBall()
                 result.success(true)
             }
             "isServiceRunning" -> result.success(ServicePrefs.isEnabled(context) && ExpressiveOverlayService.isRunning)
+            "isTriggerBallEnabled" -> result.success(ServicePrefs.isTriggerBallEnabled(context))
+            "setTriggerBallEnabled" -> {
+                val enabled = call.argument<Boolean>("enabled") ?: true
+                ServicePrefs.setTriggerBallEnabled(context, enabled)
+                if (enabled) {
+                    ExpressiveAccessibilityService.instance?.setupTriggerBall()
+                    ExpressiveOverlayService.instance?.setupTriggerBall()
+                } else {
+                    ExpressiveAccessibilityService.instance?.removeTriggerBall()
+                    ExpressiveOverlayService.instance?.removeTriggerBall()
+                }
+                result.success(true)
+            }
             "deployCustomShade" -> {
                 val target = call.argument<String>("target") ?: "quick_settings"
                 if (ExpressiveAccessibilityService.instance != null) {

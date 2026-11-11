@@ -29,6 +29,7 @@ class ExpressiveOverlayService : Service() {
 
     private var windowManager: WindowManager? = null
     private var topTriggerView: View? = null
+    private var triggerBallView: View? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -65,9 +66,11 @@ class ExpressiveOverlayService : Service() {
 
         // Ensure accessibility service trigger is also connected if running
         ExpressiveAccessibilityService.instance?.setupTopGestureTrigger()
+        ExpressiveAccessibilityService.instance?.setupTriggerBall()
 
         // Also setup fallback overlay trigger if overlay permission is granted
         setupFallbackOverlayTrigger()
+        setupTriggerBall()
 
         return START_STICKY
     }
@@ -228,9 +231,122 @@ class ExpressiveOverlayService : Service() {
         }
     }
 
+    fun setupTriggerBall() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) return
+        if (ExpressiveAccessibilityService.instance != null && ExpressiveAccessibilityService.isEnabled) {
+            removeTriggerBall()
+            return
+        }
+        if (!ServicePrefs.isTriggerBallEnabled(this)) {
+            removeTriggerBall()
+            return
+        }
+        if (triggerBallView != null) return
+
+        try {
+            val density = resources.displayMetrics.density
+            val ballSize = (44 * density).toInt()
+
+            val ballParams = WindowManager.LayoutParams(
+                ballSize,
+                ballSize,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                else
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                x = 0
+                y = 0
+            }
+
+            val ballView = android.widget.FrameLayout(this).apply {
+                val circleDrawable = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL
+                    setColor(0xCC2B2D30.toInt())
+                    setStroke((1.5f * density).toInt(), 0x66FFFFFF.toInt())
+                }
+                background = circleDrawable
+                elevation = 8f * density
+
+                val icon = android.widget.ImageView(context).apply {
+                    val chevron = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.OVAL
+                        setColor(0xFFE2E2E9.toInt())
+                    }
+                    setImageDrawable(chevron)
+                    val iconSize = (16 * density).toInt()
+                    val lp = android.widget.FrameLayout.LayoutParams(iconSize, iconSize, Gravity.CENTER)
+                    layoutParams = lp
+                }
+                addView(icon)
+
+                var initialY = 0
+                var initialTouchY = 0f
+                var isDrag = false
+
+                setOnTouchListener { v, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            initialY = ballParams.y
+                            initialTouchY = event.rawY
+                            isDrag = false
+                            v.animate().scaleX(0.9f).scaleY(0.9f).setDuration(100).start()
+                            true
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            val deltaY = (event.rawY - initialTouchY).toInt()
+                            if (Math.abs(deltaY) > 8 * density) {
+                                isDrag = true
+                                ballParams.y = initialY + deltaY
+                                try {
+                                    windowManager?.updateViewLayout(v, ballParams)
+                                } catch (_: Exception) {}
+                            }
+                            true
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(150).start()
+                            if (!isDrag) {
+                                val overlayAct = ShadeOverlayActivity.currentInstance
+                                if (ExpressiveAccessibilityService.isOverlayShowing && overlayAct != null) {
+                                    overlayAct.requestSmoothDismiss()
+                                } else {
+                                    onTopSwipeTriggered("quick_settings")
+                                }
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                }
+            }
+
+            triggerBallView = ballView
+            windowManager?.addView(ballView, ballParams)
+        } catch (_: Exception) {}
+    }
+
+    fun removeTriggerBall() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            try {
+                if (triggerBallView != null && windowManager != null) {
+                    windowManager?.removeView(triggerBallView)
+                    triggerBallView = null
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         removeFallbackOverlayTrigger()
+        removeTriggerBall()
         isRunning = false
         instance = null
     }

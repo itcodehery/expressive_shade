@@ -85,7 +85,8 @@ class ExpressiveThemeColors {
 
     if (source == ThemeSource.custom) {
       final defaultBg = custom.isAmoled ? Colors.black : const Color(0xFF141416);
-      final bg = custom.customBackground ?? defaultBg;
+      final rawBg = custom.customBackground ?? defaultBg;
+      final bg = rawBg.withValues(alpha: custom.backgroundOpacity.clamp(0.0, 1.0));
       final active = custom.customActivePill ?? custom.primaryColor;
       final defaultInactive = const Color(0xFF272930);
       final inactive = custom.customInactivePill ?? defaultInactive;

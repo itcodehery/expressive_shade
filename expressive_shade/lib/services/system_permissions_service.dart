@@ -16,7 +16,15 @@ class SystemPermissionsService {
       'accessibility': false,
       'notification': false,
       'writeSettings': false,
+      'dndPolicy': false,
+      'writeSecureSettings': false,
     };
+  }
+
+  static Future<void> requestDndPolicyPermission() async {
+    try {
+      await _channel.invokeMethod('requestDndPolicyPermission');
+    } catch (_) {}
   }
 
   static Future<void> requestOverlayPermission() async {
@@ -71,6 +79,24 @@ class SystemPermissionsService {
     try {
       final res = await _serviceChannel.invokeMethod<bool>('isServiceRunning');
       return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> isTriggerBallEnabled() async {
+    try {
+      final res = await _serviceChannel.invokeMethod<bool>('isTriggerBallEnabled');
+      return res ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<bool> setTriggerBallEnabled(bool enabled) async {
+    try {
+      final res = await _serviceChannel.invokeMethod<bool>('setTriggerBallEnabled', {'enabled': enabled});
+      return res ?? true;
     } catch (_) {
       return false;
     }

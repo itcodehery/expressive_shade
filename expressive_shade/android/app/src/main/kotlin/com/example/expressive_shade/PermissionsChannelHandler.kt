@@ -1,7 +1,9 @@
 package com.example.expressive_shade
 
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -20,7 +22,9 @@ class PermissionsChannelHandler(private val context: Context) : MethodChannel.Me
                     "overlay" to isOverlayGranted(),
                     "accessibility" to isAccessibilityGranted(),
                     "notification" to isNotificationListenerGranted(),
-                    "writeSettings" to isWriteSettingsGranted()
+                    "writeSettings" to isWriteSettingsGranted(),
+                    "dndPolicy" to isDndPolicyGranted(),
+                    "writeSecureSettings" to isWriteSecureSettingsGranted()
                 )
             )
             "requestOverlayPermission" -> SettingsLauncher.startFirst(
@@ -42,6 +46,11 @@ class PermissionsChannelHandler(private val context: Context) : MethodChannel.Me
                 context, result,
                 { Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, pkgUri()) },
                 { Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS) }
+            )
+            "requestDndPolicyPermission" -> SettingsLauncher.startFirst(
+                context, result,
+                { Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS) },
+                { Intent(Settings.ACTION_SETTINGS) }
             )
             "openAppDetailsSettings" -> SettingsLauncher.startFirst(
                 context, result,
@@ -69,4 +78,13 @@ class PermissionsChannelHandler(private val context: Context) : MethodChannel.Me
 
     private fun isWriteSettingsGranted(): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.System.canWrite(context) else true
+
+    private fun isDndPolicyGranted(): Boolean {
+        val notifManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        return notifManager?.isNotificationPolicyAccessGranted == true
+    }
+
+    private fun isWriteSecureSettingsGranted(): Boolean {
+        return context.checkCallingOrSelfPermission("android.permission.WRITE_SECURE_SETTINGS") == PackageManager.PERMISSION_GRANTED
+    }
 }

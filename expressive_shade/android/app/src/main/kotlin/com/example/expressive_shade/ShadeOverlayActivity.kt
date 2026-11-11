@@ -16,6 +16,10 @@ import io.flutter.embedding.engine.FlutterEngineCache
 import io.flutter.plugin.common.MethodChannel
 
 class ShadeOverlayActivity : FlutterActivity() {
+    companion object {
+        var currentInstance: ShadeOverlayActivity? = null
+            private set
+    }
     private var overlayChannel: MethodChannel? = null
 
     override fun provideFlutterEngine(context: Context): FlutterEngine? {
@@ -28,6 +32,7 @@ class ShadeOverlayActivity : FlutterActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        currentInstance = this
         overridePendingTransition(0, 0)
         ExpressiveAccessibilityService.isOverlayShowing = true
 
@@ -161,26 +166,49 @@ class ShadeOverlayActivity : FlutterActivity() {
         }
     }
 
+    fun requestSmoothDismiss() {
+        runOnUiThread {
+            flutterEngine?.let { engine ->
+                val channel = MethodChannel(engine.dartExecutor.binaryMessenger, "com.expressive_shade/overlay_activity")
+                channel.invokeMethod("requestDismiss", null)
+            } ?: run {
+                finish()
+            }
+        }
+    }
+
     override fun finish() {
         super.finish()
         overridePendingTransition(0, 0)
         ExpressiveAccessibilityService.isOverlayShowing = false
+        if (currentInstance == this) {
+            currentInstance = null
+        }
     }
 
     override fun onPause() {
         super.onPause()
         if (isFinishing) {
             ExpressiveAccessibilityService.isOverlayShowing = false
+            if (currentInstance == this) {
+                currentInstance = null
+            }
         }
     }
 
     override fun onStop() {
         super.onStop()
         ExpressiveAccessibilityService.isOverlayShowing = false
+        if (currentInstance == this) {
+            currentInstance = null
+        }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         ExpressiveAccessibilityService.isOverlayShowing = false
+        if (currentInstance == this) {
+            currentInstance = null
+        }
     }
 }
