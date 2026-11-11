@@ -1098,13 +1098,14 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
     FontConfig font,
   ) {
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Left Column: Time & App Name
+        // Left Column: Bold Time & App Name
         SizedBox(
-          width: 54,
+          width: 58,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 notification.clockTime,
@@ -1119,9 +1120,9 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
               Text(
                 notification.appName,
                 style: font.textStyleBuilder(
-                  fontSize: 11.5,
+                  fontSize: 11.0,
                   fontWeight: FontWeight.w500,
-                  color: colors.textSecondary.withValues(alpha: 0.85),
+                  color: colors.textSecondary.withValues(alpha: 0.82),
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -1129,76 +1130,86 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
             ],
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
 
-        // Right Column: Avatar/Icon + Content
+        // Right Column: Vertically Centered Avatar/Icon + Title & Content (No clunky chevron)
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildAppIcon(notification, size: 26, isSquircle: true),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      notification.title.isNotEmpty ? notification.title : notification.appName,
-                      style: font.textStyleBuilder(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: colors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (notification.category != NotificationCategory.silent) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: colors.isDark
-                            ? Colors.red.withValues(alpha: 0.20)
-                            : Colors.red.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        notification.category.displayName,
-                        style: font.textStyleBuilder(
-                          fontSize: 10.0,
-                          fontWeight: FontWeight.w700,
-                          color: colors.isDark ? Colors.redAccent.shade100 : Colors.red.shade700,
+              // Sleek 34x34 Avatar or App Badge
+              _buildJoinedAvatar(notification, colors, font),
+              const SizedBox(width: 11),
+
+              // Title & Message Content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            notification.title.isNotEmpty ? notification.title : notification.appName,
+                            style: font.textStyleBuilder(
+                              fontSize: 13.8,
+                              fontWeight: FontWeight.w700,
+                              color: colors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
+                        if (notification.category == NotificationCategory.security ||
+                            notification.category == NotificationCategory.realtime) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: colors.isDark
+                                  ? Colors.red.withValues(alpha: 0.20)
+                                  : Colors.red.withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: Text(
+                              notification.category.shortLabel,
+                              style: font.textStyleBuilder(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w700,
+                                color: colors.isDark ? Colors.redAccent.shade100 : Colors.red.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                  ],
-                  if (notification.isClearable) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 6.5,
-                      height: 6.5,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: colors.activePill,
+                    if (notification.content.isNotEmpty) ...[
+                      const SizedBox(height: 2.5),
+                      Text(
+                        notification.content,
+                        style: font.textStyleBuilder(
+                          fontSize: 12.2,
+                          fontWeight: FontWeight.w400,
+                          color: colors.textSecondary.withValues(alpha: 0.88),
+                        ),
+                        maxLines: _isExpanded ? 8 : 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ),
+                    ],
                   ],
-                  const SizedBox(width: 6),
-                  _buildChevron(colors),
-                ],
+                ),
               ),
-              if (notification.content.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Padding(
-                  padding: const EdgeInsets.only(left: 34),
-                  child: _buildExpandableText(
-                    text: notification.content,
-                    style: font.textStyleBuilder(
-                      fontSize: 12.5,
-                      color: colors.textSecondary.withValues(alpha: 0.90),
-                    ),
-                    collapsedMaxLines: 1,
+
+              // Subtle unread indicator dot
+              if (notification.isClearable) ...[
+                const SizedBox(width: 8),
+                Container(
+                  width: 6.5,
+                  height: 6.5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: colors.activePill,
                   ),
                 ),
               ],
@@ -1206,6 +1217,58 @@ class _NotificationCardState extends State<NotificationCard> with TickerProvider
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildJoinedAvatar(
+    NotificationModel notification,
+    ExpressiveThemeColors colors,
+    FontConfig font,
+  ) {
+    const double size = 34.0;
+    final bool isChat = notification.category == NotificationCategory.conversations;
+    final borderRadius = isChat ? BorderRadius.circular(size / 2) : BorderRadius.circular(10);
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: notification.appColor.withValues(alpha: colors.isDark ? 0.20 : 0.12),
+        borderRadius: borderRadius,
+        border: Border.all(
+          color: notification.appColor.withValues(alpha: colors.isDark ? 0.35 : 0.20),
+          width: 0.8,
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: notification.appIconBytes != null
+          ? Image.memory(
+              notification.appIconBytes!,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Center(
+                child: Icon(notification.appIcon, size: 18, color: notification.appColor),
+              ),
+            )
+          : isChat && notification.title.isNotEmpty
+              ? Center(
+                  child: Text(
+                    notification.title.characters.first.toUpperCase(),
+                    style: font.textStyleBuilder(
+                      fontSize: 15.0,
+                      fontWeight: FontWeight.w700,
+                      color: notification.appColor,
+                    ),
+                  ),
+                )
+              : Center(
+                  child: Icon(
+                    notification.appIcon,
+                    size: 18,
+                    color: notification.appColor,
+                  ),
+                ),
     );
   }
 
