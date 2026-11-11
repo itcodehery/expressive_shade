@@ -6,10 +6,8 @@ import '../providers/shade_state_provider.dart';
 import '../services/system_permissions_service.dart';
 import '../theme/m3_expressive_theme.dart';
 import '../widgets/interactive_shade_canvas.dart';
-import 'home/font_tab.dart';
 import 'home/layout_tab.dart';
 import 'home/service_tab.dart';
-import 'home/theme_tab.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -115,9 +113,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               });
             },
           ),
-          LayoutTab(colors: themeColors),
-          ThemeTab(colors: themeColors),
-          FontTab(colors: themeColors),
+          SettingsTab(colors: themeColors),
           ServiceTab(colors: themeColors),
         ],
       ),
@@ -145,36 +141,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ),
           NavigationDestination(
             icon: Icon(
-              Icons.dashboard_customize_outlined,
+              Icons.settings_outlined,
               color: themeColors.textSecondary,
             ),
             selectedIcon: Icon(
-              Icons.dashboard_customize_rounded,
+              Icons.settings_rounded,
               color: themeColors.textPrimary,
             ),
-            label: 'Layout',
-          ),
-          NavigationDestination(
-            icon: Icon(
-              Icons.palette_outlined,
-              color: themeColors.textSecondary,
-            ),
-            selectedIcon: Icon(
-              Icons.palette_rounded,
-              color: themeColors.textPrimary,
-            ),
-            label: 'Theming',
-          ),
-          NavigationDestination(
-            icon: Icon(
-              Icons.font_download_outlined,
-              color: themeColors.textSecondary,
-            ),
-            selectedIcon: Icon(
-              Icons.font_download_rounded,
-              color: themeColors.textPrimary,
-            ),
-            label: 'Fonts',
+            label: 'Settings',
           ),
           NavigationDestination(
             icon: Icon(Icons.shield_outlined, color: themeColors.textSecondary),

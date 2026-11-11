@@ -7,16 +7,20 @@ import '../../models/notification_model.dart';
 import '../../models/notification_style.dart';
 import '../../models/qs_tile_model.dart';
 import '../../models/shade_mode.dart';
+import '../../models/shade_theme.dart';
 import '../../models/slider_style.dart';
 import '../../providers/shade_state_provider.dart';
 import '../../theme/m3_expressive_theme.dart';
 import '../../features/notifications/notification_card.dart';
 import '../../widgets/expressive_media_card.dart';
 import '../../widgets/expressive_slider.dart';
+import 'font_tab.dart';
+import 'theme_tab.dart';
 
-/// Pixel / Android Settings styled Layout Tab.
-/// Organizes appearance and architecture options into grouped Material 3 cards
-/// with dedicated submenus for rich interactive previews and selectors.
+/// Pixel / Android Settings styled Layout & Customization Tab.
+/// Organizes all shade options (Theming, Typography, Architecture, Sliders,
+/// Media Player, and Notifications) into grouped Material 3 cards with
+/// dedicated submenus for rich interactive previews and selectors.
 class LayoutTab extends StatefulWidget {
   final ExpressiveThemeColors colors;
 
@@ -25,6 +29,9 @@ class LayoutTab extends StatefulWidget {
   @override
   State<LayoutTab> createState() => _LayoutTabState();
 }
+
+/// Alias for LayoutTab renamed to Settings
+typedef SettingsTab = LayoutTab;
 
 class _LayoutTabState extends State<LayoutTab> {
   final TextEditingController _searchController = TextEditingController();
@@ -44,8 +51,39 @@ class _LayoutTabState extends State<LayoutTab> {
 
     final query = _searchQuery.trim().toLowerCase();
 
-    // Define setting items for filtering and navigation
+    // Define all setting items for filtering and navigation
     final allItems = [
+      // 1. Theming & Colors
+      _LayoutSettingItem(
+        id: 'theming',
+        group: 'Display & Styling',
+        title: 'Theming & Colors',
+        subtitle: switch (state.themeSource) {
+          ThemeSource.preset => 'Preset • ${state.selectedPreset.name}',
+          ThemeSource.system => 'Dynamic Monet • System wallpaper color',
+          ThemeSource.custom => 'Custom Studio • ${((state.customTheme.backgroundOpacity ?? 1.0) * 100).toInt()}% opacity',
+        },
+        icon: Icons.palette_rounded,
+        badgeBg: colors.isDark ? const Color(0xFF4C2A3C) : const Color(0xFFFFD8E4),
+        badgeFg: colors.isDark ? const Color(0xFFFFB0CD) : const Color(0xFFB31B5B),
+        keywords: ['theme', 'theming', 'colors', 'monet', 'palette', 'custom', 'opacity', 'blur', 'dark', 'light'],
+        onTap: () => _navigateTo(context, ThemingSubmenu(colors: colors)),
+      ),
+
+      // 2. Typography & Fonts
+      _LayoutSettingItem(
+        id: 'fonts',
+        group: 'Display & Styling',
+        title: 'Typography & Fonts',
+        subtitle: '${state.selectedFont.name} • ${state.selectedFont.sampleText}',
+        icon: Icons.font_download_rounded,
+        badgeBg: colors.isDark ? const Color(0xFF1E3A4A) : const Color(0xFFD0E8F2),
+        badgeFg: colors.isDark ? const Color(0xFF70C5E8) : const Color(0xFF00678F),
+        keywords: ['font', 'fonts', 'typography', 'sans', 'google sans', 'outfit', 'dot', 'text'],
+        onTap: () => _navigateTo(context, FontsSubmenu(colors: colors)),
+      ),
+
+      // 3. Shade Mode Architecture
       _LayoutSettingItem(
         id: 'shade_mode',
         group: 'Architecture & System',
@@ -57,6 +95,8 @@ class _LayoutTabState extends State<LayoutTab> {
         keywords: ['shade', 'split', 'unified', 'matrix', 'nothing', 'architecture', 'mode', 'panel'],
         onTap: () => _navigateTo(context, ShadeModeSubmenu(colors: colors)),
       ),
+
+      // 4. Network Tile Configuration
       _LayoutSettingItem(
         id: 'network_tile',
         group: 'Architecture & System',
@@ -70,6 +110,8 @@ class _LayoutTabState extends State<LayoutTab> {
         keywords: ['network', 'wifi', 'internet', 'cellular', 'mobile', 'data', 'tiles'],
         onTap: () => _navigateTo(context, NetworkTileSubmenu(colors: colors)),
       ),
+
+      // 5. Slider Style
       _LayoutSettingItem(
         id: 'slider_style',
         group: 'Ergonomics & Controls',
@@ -81,9 +123,11 @@ class _LayoutTabState extends State<LayoutTab> {
         keywords: ['slider', 'brightness', 'volume', 'controls', 'pill', 'minimal', 'outline'],
         onTap: () => _navigateTo(context, SliderStyleSubmenu(colors: colors)),
       ),
+
+      // 6. Media Player Style
       _LayoutSettingItem(
         id: 'media_player',
-        group: 'Media Experience',
+        group: 'Media & Notifications',
         title: 'Media Player Layout Style',
         subtitle: '${state.mediaPlayerStyle.displayName}${state.inlineLyricsEnabled ? ' • Lyrics on' : ''}',
         icon: Icons.play_circle_filled_rounded,
@@ -92,9 +136,11 @@ class _LayoutTabState extends State<LayoutTab> {
         keywords: ['media', 'player', 'music', 'lyrics', 'compact', 'expanded', 'wave', 'capsule'],
         onTap: () => _navigateTo(context, MediaPlayerSubmenu(colors: colors)),
       ),
+
+      // 7. Notification Card Style
       _LayoutSettingItem(
         id: 'notifications',
-        group: 'Notifications',
+        group: 'Media & Notifications',
         title: 'Notification Card Style',
         subtitle: '${state.notificationStyle.displayName} • ${state.notificationStyle.description}',
         icon: Icons.notifications_active_rounded,
@@ -154,40 +200,45 @@ class _LayoutTabState extends State<LayoutTab> {
             items: filteredItems,
           ),
         ] else ...[
-          // Standard Grouped Android Settings Layout
+          // Group 1: Display & Styling (Theming & Fonts)
           _buildGroupCard(
             colors: colors,
             font: font,
             items: [
-              allItems[0], // Shade Mode Architecture
-              allItems[1], // Network Tile Configuration
+              allItems[0], // Theming & Colors
+              allItems[1], // Typography & Fonts
             ],
           ),
           const SizedBox(height: 14),
 
+          // Group 2: Architecture & System (Shade Mode & Network Tiles)
           _buildGroupCard(
             colors: colors,
             font: font,
             items: [
-              allItems[2], // Slider Style
+              allItems[2], // Shade Mode Architecture
+              allItems[3], // Network Tile Configuration
             ],
           ),
           const SizedBox(height: 14),
 
+          // Group 3: Controls & Ergonomics (Slider Style)
           _buildGroupCard(
             colors: colors,
             font: font,
             items: [
-              allItems[3], // Media Player Style
+              allItems[4], // Slider Style
             ],
           ),
           const SizedBox(height: 14),
 
+          // Group 4: Media & Notifications (Media Player & Notification Card Style)
           _buildGroupCard(
             colors: colors,
             font: font,
             items: [
-              allItems[4], // Notification Card Style
+              allItems[5], // Media Player Layout Style
+              allItems[6], // Notification Card Style
             ],
           ),
           const SizedBox(height: 24),
@@ -405,7 +456,75 @@ class _LayoutSettingItem {
 // --- SUBMENUS ---
 // ============================================================================
 
-/// Submenu 1: Shade Mode Architecture
+/// Submenu 1: Theming & Colors Submenu (wrapping ThemeTab)
+class ThemingSubmenu extends StatelessWidget {
+  final ExpressiveThemeColors colors;
+
+  const ThemingSubmenu({super.key, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<ShadeStateProvider>();
+    final font = state.selectedFont;
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_rounded, color: colors.textPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Theming & Colors',
+          style: font.textStyleBuilder(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+      ),
+      body: ThemeTab(colors: colors),
+    );
+  }
+}
+
+/// Submenu 2: Typography & Fonts Submenu (wrapping FontTab)
+class FontsSubmenu extends StatelessWidget {
+  final ExpressiveThemeColors colors;
+
+  const FontsSubmenu({super.key, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.watch<ShadeStateProvider>();
+    final font = state.selectedFont;
+
+    return Scaffold(
+      backgroundColor: colors.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back_rounded, color: colors.textPrimary),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          'Typography & Fonts',
+          style: font.textStyleBuilder(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: colors.textPrimary,
+          ),
+        ),
+      ),
+      body: FontTab(colors: colors),
+    );
+  }
+}
+
+/// Submenu 3: Shade Mode Architecture
 class ShadeModeSubmenu extends StatelessWidget {
   final ExpressiveThemeColors colors;
 
@@ -1096,7 +1215,7 @@ class ShadeModeSubmenu extends StatelessWidget {
   }
 }
 
-/// Submenu 2: Network Tile Configuration
+/// Submenu 4: Network Tile Configuration
 class NetworkTileSubmenu extends StatelessWidget {
   final ExpressiveThemeColors colors;
 
@@ -1146,7 +1265,6 @@ class NetworkTileSubmenu extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Option 1: Unified Internet Tile
           _buildNetworkTileOption(
             title: 'Unified Internet Tile',
             subtitle: 'Combined Wi-Fi & Mobile Data in a single expandable 1x2 pill.',
@@ -1161,7 +1279,6 @@ class NetworkTileSubmenu extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Option 2: Separate Wi-Fi & Mobile Data Tiles
           _buildNetworkTileOption(
             title: 'Separate Wi-Fi & Mobile Data',
             subtitle: 'Individual tiles for Wi-Fi and Mobile Data with direct one-tap toggles.',
@@ -1278,7 +1395,7 @@ class NetworkTileSubmenu extends StatelessWidget {
   }
 }
 
-/// Submenu 3: Slider Style
+/// Submenu 5: Slider Style
 class SliderStyleSubmenu extends StatelessWidget {
   final ExpressiveThemeColors colors;
 
@@ -1431,7 +1548,7 @@ class SliderStyleSubmenu extends StatelessWidget {
   }
 }
 
-/// Submenu 4: Media Player Style
+/// Submenu 6: Media Player Style
 class MediaPlayerSubmenu extends StatelessWidget {
   final ExpressiveThemeColors colors;
 
@@ -1605,7 +1722,6 @@ class MediaPlayerSubmenu extends StatelessWidget {
           }),
           const SizedBox(height: 8),
 
-          // Inline Lyrics Integration Setting Card
           InkWell(
             borderRadius: BorderRadius.circular(28),
             onTap: () {
@@ -1690,7 +1806,7 @@ class MediaPlayerSubmenu extends StatelessWidget {
   }
 }
 
-/// Submenu 5: Notification Card Style
+/// Submenu 7: Notification Card Style
 class NotificationStyleSubmenu extends StatelessWidget {
   final ExpressiveThemeColors colors;
 
